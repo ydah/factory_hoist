@@ -1,5 +1,15 @@
 # frozen_string_literal: true
 
+class LocalConstructorRecord
+end
+
+FactoryBot.define do
+  factory :local_constructor_record do
+    initialize_with { new }
+    skip_create
+  end
+end
+
 RSpec.describe "FactoryHoist RSpec integration" do
   Record = Struct.new(:kind, :attributes)
 
@@ -68,6 +78,28 @@ RSpec.describe "FactoryHoist deoptimization" do
   end
 end
 
+RSpec.describe "FactoryHoist marshal failure fallback" do
+  BadMarshal = Class.new do
+    def marshal_dump
+      raise "custom marshal failure"
+    end
+  end
+
+  before(:context) do
+    FactoryHoist.stats.reset!
+    FactoryHoist.configuration.factory_adapter = lambda do |_strategy, _name, _traits, _attributes|
+      BadMarshal.new
+    end
+  end
+
+  hoist(:bad_marshal)
+
+  it "deoptimizes custom marshal failures" do
+    expect(bad_marshal).to be_a(BadMarshal)
+    expect(FactoryHoist.stats.to_h[:deoptimizations]).to eq(1)
+  end
+end
+
 RSpec.describe "FactoryHoist lazy scheduling" do
   before(:context) do
     FactoryHoist.stats.reset!
@@ -119,5 +151,79 @@ RSpec.describe "FactoryHoist dynamic reference fallback" do
     expect(public_send(name).kind).to eq(:dynamic)
     expect(@created[:dynamic]).to eq(1)
     expect(FactoryHoist.stats.to_h[:deoptimizations]).to eq(1)
+  end
+end
+
+RSpec.describe "FactoryHoist example-local dependency fallback" do
+  before(:context) do
+    FactoryHoist.stats.reset!
+    @created = Struct.new(:count).new(0)
+    created = @created
+    FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, attributes|
+      created.count += 1
+      Struct.new(:kind, :attributes).new(name, attributes)
+    end
+  end
+
+  let(:local_state) { :example_local }
+  hoist(:local_order) { {state: local_state} }
+
+  it "materializes through the example when a declaration uses let" do
+    expect(@created.count).to eq(0)
+    expect(local_order.attributes[:state]).to eq(:example_local)
+    expect(@created.count).to eq(1)
+    expect(FactoryHoist.stats.to_h[:deoptimizations]).to eq(1)
+  end
+end
+
+RSpec.describe "FactoryHoist example instance fallback" do
+  before(:context) do
+    FactoryHoist.stats.reset!
+    FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, attributes|
+      Struct.new(:kind, :attributes).new(name, attributes)
+    end
+  end
+  before { @local_state = :from_example }
+
+  hoist(:instance_order) { {state: @local_state} }
+
+  it "evaluates instance-variable declarations on the example" do
+    expect(instance_order.attributes[:state]).to eq(:from_example)
+    expect(FactoryHoist.stats.to_h[:deoptimizations]).to eq(1)
+  end
+end
+
+RSpec.describe "FactoryHoist dependency ordering" do
+  before(:context) do
+    FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, attributes|
+      Struct.new(:kind, :attributes).new(name, attributes)
+    end
+  end
+
+  hoist(:order) { {company: company} }
+  hoist(:company)
+
+  it "materializes dependencies independently of declaration order" do
+    expect(order.attributes[:company].kind).to eq(:company)
+  end
+end
+
+RSpec.describe "FactoryHoist custom persistence fallback" do
+  before(:context) do
+    FactoryHoist.configuration.factory_adapter = nil
+  end
+  before { FactoryHoist.stats.reset! }
+
+  hoist(:constructor_record, :local_constructor_record)
+  hoist(:first_constructor, :local_constructor_record) { {other: second_constructor} }
+  hoist(:second_constructor, :local_constructor_record) { {other: first_constructor} }
+
+  it "deoptimizes initialize_with and to_create definitions" do
+    expect(constructor_record).to be_a(LocalConstructorRecord)
+    expect(FactoryHoist.stats.to_h[:deoptimizations]).to eq(1)
+  end
+
+  it "reports circular local dependencies without overflowing the stack" do
+    expect { first_constructor }.to raise_error(FactoryHoist::MaterializationError, /circular local/)
   end
 end

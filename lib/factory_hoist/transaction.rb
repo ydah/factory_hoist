@@ -33,9 +33,8 @@ module FactoryHoist
       end
 
       def rollback_outer
-        return unless usable?
-
-        @connection.rollback_transaction if @owned
+        @connection.rollback_transaction if usable? && @owned
+      ensure
         @savepoints.clear
         @owned = false
       end

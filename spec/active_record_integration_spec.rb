@@ -55,6 +55,7 @@ RSpec.describe "FactoryHoist context hook isolation" do
     FactoryHoist.configuration.subxid_budget = 60
   end
   before(:context) { FactoryHoistUser.create!(name: "context setup") }
+  after(:context) { expect(FactoryHoistUser.count).to eq(2) }
 
   hoist(:user, :factory_hoist_user)
 
@@ -79,13 +80,14 @@ RSpec.describe "FactoryHoist subtransaction budget" do
 
   hoist(:user, :factory_hoist_user)
 
-  it "starts with one materialization" do
-    expect(user.name).to eq("original")
-    expect(FactoryHoist.stats.to_h[:materializations]).to eq(1)
-  end
-
   it "rebuilds hoisted data after the configured number of examples" do
     expect(user.name).to eq("original")
+    expect(FactoryHoist.stats.to_h[:materializations]).to eq(1)
+
+    nested_example = Object.new
+    nested_example.define_singleton_method(:run) { FactoryHoistUser.count }
+    FactoryHoist::Runtime.current.around_example(nested_example)
+
     expect(FactoryHoist.stats.to_h).to include(
       materializations: 2,
       transaction_rebuilds: 1
@@ -105,23 +107,28 @@ RSpec.describe "FactoryHoist bulk writer" do
 
 
   it "identifies the failing row without leaving partial inserts" do
-    expect { FactoryHoist.unsafe_bulk_insert(:factory_hoist_user, 2, name: nil) }
-      .to raise_error(FactoryHoist::BulkWriteError, /row 0/)
-    expect(FactoryHoistUser.count).to eq(0)
+    FactoryHoistUser.transaction do
+      expect { FactoryHoist.unsafe_bulk_insert(:factory_hoist_user, 2, name: nil) }
+        .to raise_error(FactoryHoist::BulkWriteError, /row 0/)
+      FactoryHoistUser.create!(name: "transaction remains usable")
+    end
+
+    expect(FactoryHoistUser.pluck(:name)).to eq(["transaction remains usable"])
   end
 end
 
 RSpec.describe FactoryHoist::DatabaseSnapshot do
   it "changes when a hoisted database row changes" do
     user = FactoryHoistUser.create!(name: "before")
-    scope = Struct.new(:values).new({user: user})
+    other = FactoryHoistUser.create!(name: "other")
+    scope = Struct.new(:values).new({user: user, other: other})
     before = described_class.call([scope])
 
-    user.update!(name: "after")
+    other.update!(name: "after")
 
     expect(described_class.call([scope])).not_to eq(before)
   ensure
-    user&.destroy!
+    FactoryHoistUser.where(id: [user&.id, other&.id]).delete_all
   end
 
   it "makes paranoid sessions reject database mutations" do
@@ -141,5 +148,47 @@ RSpec.describe FactoryHoist::DatabaseSnapshot do
   ensure
     session&.leave(group) if group
     FactoryHoist.configuration.paranoid_mode = false
+  end
+end
+
+RSpec.describe "FactoryHoist materialization failure cleanup" do
+  it "rolls back partial group materialization immediately" do
+    FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, _attributes|
+      raise "failed factory" if name == :bad
+
+      FactoryHoistUser.create!(name: "partial")
+    end
+    definitions = {
+      good: FactoryHoist::Definition.new(:good, :good, [], {}, nil, "cleanup"),
+      bad: FactoryHoist::Definition.new(:bad, :bad, [], {}, nil, "cleanup")
+    }
+    session = FactoryHoist::Runtime::Session.new
+    group = Object.new
+    session.enter(group, definitions, materialize: false)
+
+    expect { session.materialize(group) }.to raise_error(FactoryHoist::MaterializationError)
+    expect(FactoryHoistUser.count).to eq(0)
+  ensure
+    session&.leave(group) if group
+  end
+end
+
+RSpec.describe "FactoryHoist ActiveRecord local fallback" do
+  before(:context) { FactoryHoist.configuration.factory_adapter = nil }
+  let(:local_name) { "example local" }
+  hoist(:local_user, :factory_hoist_user) { {name: local_name} }
+
+  2.times do
+    it "rolls a dynamically local record back after the example" do
+      expect(FactoryHoistUser.count).to eq(0)
+      expect(local_user.name).to eq("example local")
+      expect(FactoryHoistUser.count).to eq(1)
+    end
+  end
+end
+
+RSpec.describe "FactoryHoist ActiveRecord local fallback cleanup" do
+  it "does not leak local records after the group" do
+    expect(FactoryHoistUser.count).to eq(0)
   end
 end

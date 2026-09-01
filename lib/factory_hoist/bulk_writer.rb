@@ -13,7 +13,9 @@ module FactoryHoist
       rows = Array.new(count) { ::FactoryBot.attributes_for(name, *traits, **attributes) }
       return [] if rows.empty?
 
-      factory.build_class.insert_all!(rows)
+      factory.build_class.transaction(requires_new: true) do
+        factory.build_class.insert_all!(rows)
+      end
     rescue StandardError => error
       index = failing_row(factory&.build_class, rows || [])
       location = index ? " at row #{index}" : ""

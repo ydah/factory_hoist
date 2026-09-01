@@ -28,6 +28,9 @@ module FactoryHoist
       Compatibility.warn_for_database_cleaner
       Scheduler.install!
     end
-    config.around(:each) { |example| Runtime.current.around_example(example) }
+    config.around(:each) do |example|
+      local = !Scheduler.definitions_for(example.example_group).empty?
+      Runtime.current.around_example(example, local: local)
+    end
   end
 end

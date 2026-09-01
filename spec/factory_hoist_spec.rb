@@ -51,6 +51,58 @@ RSpec.describe FactoryHoist do
     expect { first.rand((1 << 32) + 1) }.to raise_error(ArgumentError)
   end
 
+  it "scopes deterministic PCG state through build and reset" do
+    faker_config = Class.new do
+      class << self
+        attr_accessor :random
+      end
+    end
+    stub_const("Faker::Config", faker_config)
+    original = Random.new
+    faker_config.random = original
+    described_class.configuration.factory_adapter = lambda do |_strategy, _name, _traits, _attributes|
+      Faker::Config.random.rand(1 << 32)
+    end
+
+    first = Array.new(2) { described_class.build(:user) }
+    described_class.reset!
+    described_class.configuration.factory_adapter = lambda do |_strategy, _name, _traits, _attributes|
+      Faker::Config.random.rand(1 << 32)
+    end
+
+    expect(Array.new(2) { described_class.build(:user) }).to eq(first)
+    expect(Faker::Config.random).to equal(original)
+  end
+
+  it "isolates Faker random sources between threads" do
+    faker_config = Class.new do
+      class << self
+        attr_accessor :random
+      end
+    end
+    stub_const("Faker::Config", faker_config)
+    entered = Queue.new
+    attempted = Queue.new
+    release = Queue.new
+    first = Thread.new { described_class.with_seed(1) { entered << 1; release.pop } }
+    expect(entered.pop).to eq(1)
+    second = Thread.new do
+      attempted << true
+      described_class.with_seed(2) { entered << 2 }
+    end
+    attempted.pop
+
+    expect { entered.pop(true) }.to raise_error(ThreadError)
+    release << true
+    first.join
+    second.join
+    expect(entered.pop).to eq(2)
+  ensure
+    release << true if first&.alive?
+    first&.join
+    second&.join
+  end
+
   it "reports factory usage statistics" do
     described_class.stats.increment(:references, 2)
     described_class.stats.increment(:deoptimizations)
@@ -116,6 +168,10 @@ FactoryBot.define do
     name { "fallback" }
     initialize_with { new(name: name) }
   end
+
+  factory :broken_fast_build_user, class: FastBuildUser do
+    first_name { raise "compiled attribute failure" }
+  end
 end
 
 RSpec.describe FactoryHoist::FastBuild do
@@ -147,5 +203,11 @@ RSpec.describe FactoryHoist::FastBuild do
     described_class.reload!
 
     expect(FactoryHoist.build(:reloadable_fast_build_record)).to be_a(ReloadableFastBuildRecord)
+  end
+
+  it "keeps the generated source in compiled backtraces" do
+    expect { FactoryHoist.build(:broken_fast_build_user) }.to raise_error do |error|
+      expect(error.backtrace).to include(a_string_including("/factory_hoist/broken_fast_build_user_"))
+    end
   end
 end

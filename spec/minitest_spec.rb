@@ -8,6 +8,9 @@ RSpec.describe FactoryHoist::MinitestDSL do
     Class.new(Minitest::Test) do
       hoist(:company)
       hoist(:user) { {company: company} }
+      hoist(:local_user) { {state: local_state} }
+
+      def local_state = :example_local
 
       def test_placeholder; end
     end
@@ -24,7 +27,8 @@ RSpec.describe FactoryHoist::MinitestDSL do
     test = test_class.new(:test_placeholder)
 
     expect(test.user.attributes[:company]).to equal(test.company)
-    expect(FactoryHoist.stats.to_h).to include(deoptimizations: 2)
+    expect(test.local_user.attributes[:state]).to eq(:example_local)
+    expect(FactoryHoist.stats.to_h).to include(deoptimizations: 3)
   end
 
   it "rejects duplicate declarations in one class" do

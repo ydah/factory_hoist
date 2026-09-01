@@ -33,13 +33,17 @@ subtrans_reads = lambda do
   connection.select_value("SELECT blks_read FROM pg_stat_slru WHERE name = 'Subtrans'").to_i
 end
 before_reads = subtrans_reads.call
+checkpoint = connection.select_value("SELECT next_xid::text FROM pg_control_checkpoint()")
 
 session.enter(group, {record: definition})
 61.times do
   example = Object.new
   example.define_singleton_method(:run) do
     connection.execute("INSERT INTO factory_hoist_subxid_check(name) VALUES ('example')")
-    transaction_ids << connection.select_value("SELECT txid_current()")
+    transaction_ids << connection.select_value("SELECT txid_current_if_assigned()")
+    raise "backend xid is not visible" unless connection.select_value(<<~SQL)
+      SELECT backend_xid::text FROM pg_stat_activity WHERE pid = pg_backend_pid()
+    SQL
   end
   session.around_example(example)
 end
@@ -48,5 +52,24 @@ session.leave(group)
 raise "outer transaction was not rebuilt" unless transaction_ids.uniq.size == 2
 raise "unexpected subtrans disk read" unless subtrans_reads.call == before_reads
 raise "hoisted rows leaked" unless model.count.zero?
+raise "pg_control_checkpoint unavailable" unless checkpoint
 
-puts "PostgreSQL subxid budget verified: 61 writes, 1 rebuild, 0 Subtrans reads"
+FactoryBot.define do
+  factory :factory_hoist_postgres_bulk_check, class: model do
+    name { "bulk" }
+  end
+end
+connection.transaction(requires_new: true) do
+  begin
+    FactoryHoist.unsafe_bulk_insert(:factory_hoist_postgres_bulk_check, 2, name: nil)
+  rescue FactoryHoist::BulkWriteError => error
+    raise "bulk failure location missing" unless error.message.include?("row 0")
+  else
+    raise "invalid bulk insert unexpectedly succeeded"
+  end
+  model.create!(name: "transaction remains usable")
+  raise ActiveRecord::Rollback
+end
+raise "bulk verification leaked rows" unless model.count.zero?
+
+puts "PostgreSQL verified: subxid budget, activity/checkpoint stats, and bulk failure recovery"

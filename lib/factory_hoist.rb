@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "factory_bot"
+require "monitor"
 require_relative "factory_hoist/configuration"
 require_relative "factory_hoist/pcg32"
 require_relative "factory_hoist/runtime"
@@ -8,6 +9,8 @@ require_relative "factory_hoist/stats"
 require_relative "factory_hoist/version"
 
 module FactoryHoist
+  RANDOM_MONITOR = Monitor.new
+
   class Error < StandardError; end
   class BulkWriteError < Error; end
   class DuplicateHoistError < Error; end
@@ -28,20 +31,16 @@ module FactoryHoist
 
     def reset!
       @configuration = Configuration.new
+      Thread.current[:factory_hoist_random] = nil
       stats.reset!
       Runtime.reset!
       FastBuild.reset! if defined?(FastBuild)
     end
 
     def build(name, *traits, **attributes)
-      adapter = configuration.factory_adapter
-      return adapter.call(:build, name, traits, attributes) if adapter
+      return build_factory(name, traits, attributes) unless defined?(::Faker::Config)
 
-      require_relative "factory_hoist/fast_build"
-      result = FastBuild.call(name, traits, attributes)
-      return result unless result.equal?(FastBuild::FALLBACK)
-
-      call_factory_bot(:build, name, traits, attributes)
+      with_random_source(random) { build_factory(name, traits, attributes) }
     end
 
     def create(name, *traits, **attributes)
@@ -80,18 +79,44 @@ module FactoryHoist
     end
 
     def with_seed(seed)
+      with_random_source(PCG32.new(seed)) { yield }
+    end
+
+    private
+
+    def build_factory(name, traits, attributes)
+      adapter = configuration.factory_adapter
+      return adapter.call(:build, name, traits, attributes) if adapter
+
+      require_relative "factory_hoist/fast_build"
+      result = FastBuild.call(name, traits, attributes)
+      return result unless result.equal?(FastBuild::FALLBACK)
+
+      call_factory_bot(:build, name, traits, attributes)
+    end
+
+    def with_random_source(source)
+      faker_config = ::Faker::Config if defined?(::Faker::Config)
+      if RANDOM_MONITOR.mon_owned? && Thread.current[:factory_hoist_random].equal?(source) &&
+          (!faker_config || faker_config.random.equal?(source))
+        return yield
+      end
+      return scope_random_source(source) { yield } unless faker_config
+
+      RANDOM_MONITOR.synchronize { scope_random_source(source) { yield } }
+    end
+
+    def scope_random_source(source)
       previous = Thread.current[:factory_hoist_random]
-      Thread.current[:factory_hoist_random] = PCG32.new(seed)
+      Thread.current[:factory_hoist_random] = source
       faker_config = ::Faker::Config if defined?(::Faker::Config)
       previous_faker = faker_config.random if faker_config
-      faker_config.random = Thread.current[:factory_hoist_random] if faker_config
+      faker_config.random = source if faker_config
       yield
     ensure
       faker_config.random = previous_faker if faker_config
       Thread.current[:factory_hoist_random] = previous
     end
-
-    private
 
     def run_factory(strategy, name, traits, attributes)
       adapter = configuration.factory_adapter

@@ -6,21 +6,21 @@ Audited against `.idea/factory_hoist-design.md` on 2026-09-01.
 
 | Requirement | Evidence |
 |---|---|
-| RSpec declaration collection, selected-example reference analysis, dependency propagation, and LCA scheduling | `Scheduler`; tests for unused, descendant-only, dependent, and dynamic references |
-| Safe fallback for unanalyzable dynamic references and uncopyable values | Local per-example materialization; degradation counters |
-| Group/example savepoints, context-hook isolation, rollback, and configurable rebuild budget | SQLite integration tests |
-| PostgreSQL subxid budget | PostgreSQL 14: 61 writes, one outer transaction rebuild, zero added `Subtrans` reads, zero leaked rows |
+| RSpec declaration collection, selected-example reference analysis, dependency propagation, and LCA scheduling | Tests for unused, descendant-only, reverse-ordered dependencies, filtered single-example runs, and dynamic references |
+| Safe fallback for dynamic inputs and unsupported factories | RSpec `let`, instance variables, custom Marshal failures, `initialize_with`, and `to_create` all deopt locally |
+| Group/example savepoints, context-hook isolation, rollback, and configurable rebuild budget | SQLite tests cover before/after context ordering, partial materialization failure, and local ActiveRecord rollback |
+| PostgreSQL subxid budget | 61 writes, one rebuild, no added `Subtrans` reads; `pg_stat_activity`, `txid_current_if_assigned`, and `pg_control_checkpoint` verified |
 | Lazy graph copy with relationship identity and per-example memoization | RSpec integration tests |
 | Deterministic node/key seed | BLAKE2b-based seed test; Faker random source is scoped when Faker is loaded |
-| PCG random source | Canonical PCG32 vector and range/bytes tests |
+| PCG random source | Canonical PCG32 vector, boundary tests, reset reproducibility, and thread-isolated Faker scopes |
 | Failure locality | Materialization errors include the declaration node and key |
 | FactoryBot build/create/list compatibility | Unit and ActiveRecord integration tests |
-| Fast Build | Generated Ruby file, runtime constant resolution after reload, conservative fallback; fixed benchmark above 5x |
-| Bulk Writer | ActiveRecord `insert_all!`, type casting delegated to ActiveRecord, failed-row diagnosis without partial inserts |
+| Fast Build | Generated Ruby file, generated-file backtraces, reload-safe constants, conservative fallback; fixed benchmark above 5x |
+| Bulk Writer | ActiveRecord `insert_all!`, native type casting, row diagnosis, and PostgreSQL outer-transaction recovery after failure |
 | DatabaseCleaner warning and paranoid row checks | Unit and ActiveRecord integration tests |
 | RSpec and Minitest correctness | RSpec sharing; Minitest deliberately deoptimizes to per-test creation |
 | Packaging and CLI | Gem build and packaged executable checks |
-| Process-parallel database initialization | SQLite locked file clone and PostgreSQL advisory-locked template clone; PostgreSQL verified against a temporary source/worker pair |
+| Process-parallel database initialization | SQLite locked exclusive no-overwrite copy and PostgreSQL advisory-locked template clone; PostgreSQL verified with temporary databases |
 | Phase 0 harness | Reproducible synthetic three-way benchmark in `docs/phase0-synthetic.md` |
 
 ## Not claimable from this repository
@@ -40,7 +40,7 @@ These are empirical acceptance gates, not library code:
 ## Deliberate safe degradation
 
 - Minitest cross-test sharing is disabled because the design leaves its portable group tree/lifecycle unresolved. The compatibility path remains correct and reports deoptimization.
-- Static reference analysis uses MRI bytecode. Dynamic or indirect calls take the correct local fallback; non-MRI runtimes conservatively schedule at the declaration boundary.
+- Static reference analysis uses MRI bytecode. Dynamic, indirect, and non-MRI block declarations take the correct local fallback.
 
 ## Verdict
 

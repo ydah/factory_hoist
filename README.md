@@ -74,7 +74,7 @@ FactoryHoist.configure do |config|
 end
 ```
 
-`subxid_budget` rebuilds an owned outer transaction after that many examples. Set it to `0` to disable rebuilding. `suite_seed` makes `FactoryHoist.random` deterministic for a declaration path and key. `paranoid_mode` checks hoisted ActiveRecord rows before and after every example and raises if they changed.
+`subxid_budget` rebuilds an owned outer transaction after that many examples. Set it to `0` to disable rebuilding. `suite_seed` makes `FactoryHoist.random` deterministic for a declaration path and key, including Faker-backed Fast Build attributes. `paranoid_mode` checks hoisted ActiveRecord rows before and after every example and raises if they changed.
 
 ### Advice and statistics
 
@@ -87,6 +87,7 @@ The command runs the selected RSpec suite, then reports repeated literal factory
 ## Constraints
 
 - Minitest accepts the same DSL and safely creates once per test; cross-test hoisting is intentionally disabled because Minitest has no portable group lifecycle.
+- Declarations that use example-local helpers, instance variables, `initialize_with`, or `to_create` are created inside the example transaction instead of being shared.
 - `after_commit` does not fire inside the managed transaction.
 - Objects that `Marshal` cannot copy silently use example-local creation and increment the degradation counter.
 - DatabaseCleaner truncation is incompatible and emits a warning; use its transaction strategy.
@@ -97,7 +98,7 @@ The command runs the selected RSpec suite, then reports repeated literal factory
 
 Run `bundle install`, then `bundle exec rake`. The suite includes an in-memory SQLite integration test for transaction and savepoint behavior.
 
-With a local PostgreSQL server available, verify the subtransaction budget using a temporary table:
+With a local PostgreSQL server available, verify the subtransaction budget, PostgreSQL statistics, and bulk-insert failure recovery using a temporary table:
 
 ```console
 $ DATABASE_URL=postgresql:///postgres bundle exec ruby script/verify_postgresql

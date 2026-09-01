@@ -53,13 +53,18 @@ module FactoryHoist
         raise Error, "hoist scope mismatch" unless scope&.group&.equal?(group)
 
         scope.materialize!
+      rescue Exception # rubocop:disable Lint/RescueException
+        @transaction.rollback_savepoint(scope.savepoint) if scope
+        scope&.values&.clear
+        raise
       end
 
       def leave(group)
-        scope = @scopes.pop
+        scope = @scopes.last
         return unless scope
         raise Error, "hoist scope mismatch" unless scope.group.equal?(group)
 
+        @scopes.pop
         @transaction.rollback_savepoint(scope.savepoint)
         if @scopes.empty?
           @transaction.rollback_outer
@@ -67,8 +72,11 @@ module FactoryHoist
         end
       end
 
-      def around_example(example)
-        return example.run if @scopes.empty?
+      def around_example(example, local: false)
+        local_transaction = @scopes.empty? && local
+        return example.run if @scopes.empty? && !local
+
+        @transaction.begin_outer if local_transaction
 
         rebuild_if_needed
         savepoint = "factory_hoist_example_#{example.object_id}"
@@ -82,14 +90,17 @@ module FactoryHoist
         end
       ensure
         @transaction.rollback_savepoint(savepoint) if savepoint
+        if local_transaction
+          @transaction.rollback_outer
+          @examples_since_begin = 0
+        end
       end
 
       def fetch(example_instance, name, fallback, definitions)
         FactoryHoist.stats.increment(:references)
-        FactoryHoist.stats.record_reference("#{fallback.node_path} #{name}")
         state = example_instance.instance_variable_get(:@__factory_hoist_values)
         unless state
-          state = ExampleValues.new(@scopes, definitions)
+          state = ExampleValues.new(example_instance, @scopes, definitions)
           example_instance.instance_variable_set(:@__factory_hoist_values, state)
         end
         state.fetch(name, fallback)
@@ -109,6 +120,10 @@ module FactoryHoist
         end
         @examples_since_begin = 0
         FactoryHoist.stats.increment(:transaction_rebuilds)
+      rescue Exception # rubocop:disable Lint/RescueException
+        @transaction.rollback_outer
+        @scopes.each { |scope| scope.values.clear }
+        raise
       end
     end
 
@@ -120,6 +135,7 @@ module FactoryHoist
         @definitions = definitions
         @ancestors = ancestors
         @values = {}
+        @materializing = []
       end
 
       def savepoint
@@ -129,13 +145,25 @@ module FactoryHoist
       def materialize!
         @values = {}
         context = MaterializationContext.new(@ancestors, self)
-        @definitions.each_value do |definition|
-          started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
-          @values[definition.name] = definition.materialize(context)
-          FactoryHoist.stats.increment(:materializations)
-          elapsed = Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
-          FactoryHoist.stats.record_cost("#{definition.node_path} #{definition.name}", elapsed)
-        end
+        @definitions.each_key { |name| materialize_one(name, context) }
+      end
+
+      def materialize_one(name, context)
+        return @values.fetch(name) if @values.key?(name)
+        raise Error, "circular hoist dependency: #{(@materializing + [name]).join(' -> ')}" if @materializing.include?(name)
+
+        definition = @definitions.fetch(name)
+        @materializing << name
+        started = Process.clock_gettime(Process::CLOCK_MONOTONIC)
+        @values[name] = definition.materialize(context)
+        FactoryHoist.stats.increment(:materializations)
+        FactoryHoist.stats.record_cost(
+          "#{definition.node_path} #{name}",
+          Process.clock_gettime(Process::CLOCK_MONOTONIC) - started
+        )
+        @values.fetch(name)
+      ensure
+        @materializing.pop if @materializing.last == name
       end
     end
 
@@ -146,6 +174,10 @@ module FactoryHoist
 
       def [](name)
         fetch(name)
+      end
+
+      def evaluate(&block)
+        instance_exec(&block)
       end
 
       def method_missing(name, ...)
@@ -161,34 +193,56 @@ module FactoryHoist
       private
 
       def available?(name)
-        @scopes.reverse_each.any? { |scope| scope.values.key?(name) }
+        @scopes.reverse_each.any? { |scope| scope.values.key?(name) || scope.definitions.key?(name) }
       end
 
       def fetch(name)
         scope = @scopes.reverse_each.find { |candidate| candidate.values.key?(name) }
-        return scope.values.fetch(name) if scope
+        if scope
+          definition = scope.definitions.fetch(name)
+          FactoryHoist.stats.record_reference("#{definition.node_path} #{name}")
+          return scope.values.fetch(name)
+        end
+
+        scope = @scopes.reverse_each.find { |candidate| candidate.definitions.key?(name) }
+        if scope
+          definition = scope.definitions.fetch(name)
+          FactoryHoist.stats.record_reference("#{definition.node_path} #{name}")
+          return scope.materialize_one(name, self)
+        end
 
         raise KeyError, "unknown hoist: #{name}"
       end
     end
 
     class ExampleValues
-      def initialize(scopes, definitions)
+      def initialize(example, scopes, definitions)
+        @example = example
         @scopes = scopes.dup
         @definitions = definitions
         @values = copy_shared_values
         @local = {}
+        @materializing = []
       end
 
       def fetch(name, fallback = nil)
+        definition = @definitions[name] || fallback
+        FactoryHoist.stats.record_reference("#{definition.node_path} #{name}") if definition
         return @values.fetch(name) if @values.key?(name)
         return @local.fetch(name) if @local.key?(name)
 
-        definition = @definitions[name] || fallback
         raise KeyError, "unknown hoist: #{name}" unless definition
+        if @materializing.include?(name)
+          raise Error, "circular local hoist dependency: #{(@materializing + [name]).join(' -> ')}"
+        end
 
         FactoryHoist.stats.increment(:deoptimizations)
-        @local[name] = definition.materialize(ExampleMaterializationContext.new(self))
+        @materializing << name
+        begin
+          @local[name] = definition.materialize(ExampleMaterializationContext.new(self, @example))
+        ensure
+          @materializing.pop
+        end
       end
 
       def defined?(name)
@@ -201,37 +255,42 @@ module FactoryHoist
         copyable = visible_values.select do |_name, value|
           DeepCopy.call(value)
           true
-        rescue TypeError
+        rescue StandardError
           false
         end
         DeepCopy.call(copyable)
-      rescue TypeError
+      rescue StandardError
         {}
       end
 
       def visible_values
         @scopes.each_with_object({}) { |scope, values| values.merge!(scope.values) }
       end
-
     end
 
     class ExampleMaterializationContext
-      def initialize(values)
+      def initialize(values, example)
         @values = values
+        @example = example
       end
 
       def [](name)
         @values.fetch(name)
       end
 
-      def method_missing(name, ...)
-        @values.fetch(name)
-      rescue KeyError
+      def evaluate(&block)
+        @example.instance_exec(&block)
+      end
+
+      def method_missing(name, *args, **kwargs, &block)
+        return @values.fetch(name) if args.empty? && kwargs.empty? && @values.defined?(name)
+        return @example.__send__(name, *args, **kwargs, &block) if @example.respond_to?(name, true)
+
         super
       end
 
       def respond_to_missing?(name, include_private = false)
-        @values.defined?(name) || super
+        @values.defined?(name) || @example.respond_to?(name, true) || super
       end
     end
   end

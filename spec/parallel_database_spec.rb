@@ -15,6 +15,7 @@ RSpec.describe FactoryHoist::ParallelDatabase do
       expect(File.binread(target)).to eq("database")
       expect { described_class.clone(source: source.path, target: target, adapter: :sqlite) }
         .to raise_error(FactoryHoist::Error, /already exists/)
+      expect(File.binread(target)).to eq("database")
     ensure
       File.unlink(target) if target && File.exist?(target)
     end

@@ -1,7 +1,5 @@
 # frozen_string_literal: true
 
-require "fileutils"
-
 module FactoryHoist
   module ParallelDatabase
     module_function
@@ -15,13 +13,26 @@ module FactoryHoist
     end
 
     def clone_sqlite(source, target)
-      raise Error, "target database already exists: #{target}" if File.exist?(target)
-
+      created = false
+      complete = false
+      output = nil
       File.open(source, "rb") do |file|
         file.flock(File::LOCK_EX)
-        FileUtils.cp(source, target, preserve: true)
+        output = File.open(target, File::WRONLY | File::CREAT | File::EXCL, file.stat.mode)
+        created = true
+        output.binmode
+        IO.copy_stream(file, output)
+        output.flush
+        output.fsync
+        output.close
+        complete = true
       end
       target
+    rescue Errno::EEXIST
+      raise Error, "target database already exists: #{target}"
+    ensure
+      output&.close unless output&.closed?
+      File.unlink(target) if created && !complete && File.exist?(target)
     end
     private_class_method :clone_sqlite
 
@@ -43,9 +54,14 @@ module FactoryHoist
       target
     ensure
       source_connection&.close unless source_connection&.finished?
-      if admin
-        admin.exec_params("SELECT pg_advisory_unlock(hashtext($1))", ["factory_hoist_database_clone"])
-        admin.close
+      if admin && !admin.finished?
+        begin
+          admin.exec_params("SELECT pg_advisory_unlock(hashtext($1))", ["factory_hoist_database_clone"])
+        rescue PG::Error
+          nil
+        ensure
+          admin.close
+        end
       end
     end
     private_class_method :clone_postgresql
