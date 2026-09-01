@@ -14,6 +14,27 @@ module FactoryHoist
       return [] if rows.empty?
 
       factory.build_class.insert_all!(rows)
+    rescue StandardError => error
+      index = failing_row(factory&.build_class, rows || [])
+      location = index ? " at row #{index}" : ""
+      raise BulkWriteError, "#{name} bulk insert failed#{location}: #{error.message}", cause: error
     end
+
+    def failing_row(model, rows)
+      return unless model&.respond_to?(:transaction)
+
+      failed = nil
+      model.transaction(requires_new: true) do
+        rows.each_with_index do |row, index|
+          model.insert_all!([row])
+        rescue StandardError
+          failed = index
+          raise ::ActiveRecord::Rollback
+        end
+        raise ::ActiveRecord::Rollback
+      end
+      failed
+    end
+    private_class_method :failing_row
   end
 end

@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require "factory_hoist/fast_build"
+
 RSpec.describe FactoryHoist do
   before do
     described_class.reset!
@@ -60,5 +62,75 @@ RSpec.describe FactoryHoist do
 
     expect { described_class.create(:user) }
       .to raise_error(KeyError, /Factory not registered/)
+  end
+end
+
+class FastBuildUser
+  attr_accessor :first_name, :last_name, :email
+end
+
+class ReloadableFastBuildRecord
+  attr_accessor :name
+end
+
+class RequiredConstructorRecord
+  attr_reader :name
+
+  def initialize(name:)
+    @name = name
+  end
+end
+
+FactoryBot.define do
+  factory :fast_build_user do
+    first_name { "Ada" }
+    last_name { "Lovelace" }
+    email { "#{first_name.downcase}.#{last_name.downcase}@example.test" }
+  end
+
+  factory :callback_fast_build_user, class: FastBuildUser do
+    first_name { "before" }
+    after(:build) { |user| user.first_name = "after" }
+  end
+
+  factory :reloadable_fast_build_record do
+    name { "current" }
+  end
+
+  factory :required_constructor_record do
+    name { "fallback" }
+    initialize_with { new(name: name) }
+  end
+end
+
+RSpec.describe FactoryHoist::FastBuild do
+  before do
+    FactoryHoist.configuration.factory_adapter = nil
+    described_class.reset!
+  end
+
+  it "builds simple FactoryBot definitions through compiled attribute methods" do
+    user = FactoryHoist.build(:fast_build_user, first_name: "Grace")
+
+    expect(user).to be_a(FastBuildUser)
+    expect(user.email).to eq("grace.lovelace@example.test")
+    expect(File).to exist(described_class.compiled_source(:fast_build_user))
+  end
+
+  it "falls back to FactoryBot when callbacks affect build semantics" do
+    expect(FactoryHoist.build(:callback_fast_build_user).first_name).to eq("after")
+  end
+
+  it "falls back for factories with required constructors" do
+    expect(FactoryHoist.build(:required_constructor_record).name).to eq("fallback")
+  end
+
+  it "resolves model constants again after reload" do
+    expect(FactoryHoist.build(:reloadable_fast_build_record)).to be_a(ReloadableFastBuildRecord)
+    Object.send(:remove_const, :ReloadableFastBuildRecord)
+    Object.const_set(:ReloadableFastBuildRecord, Class.new { attr_accessor :name })
+    described_class.reload!
+
+    expect(FactoryHoist.build(:reloadable_fast_build_record)).to be_a(ReloadableFastBuildRecord)
   end
 end

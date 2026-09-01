@@ -3,7 +3,7 @@
 module FactoryHoist
   class Advisor
     HOIST = /\bhoist\s*\(?\s*:(\w+)/
-    FACTORY_CALL = /\b(create|build|create_list|build_list)\s*\(\s*:(\w+)[^\n]*\)/
+    FACTORY_CALL = /\b(create|build|create_list|build_list)\s*\(\s*:(\w+)([^\n]*)\)/
 
     def initialize(paths)
       @paths = paths
@@ -41,7 +41,7 @@ module FactoryHoist
 
         "#{file}:#{source[0...match.begin(0)].count("\n") + 1}: unused hoist :#{name}"
       end
-      calls = source.scan(FACTORY_CALL).tally.filter_map do |(strategy, name), count|
+      calls = source.scan(FACTORY_CALL).tally.filter_map do |(strategy, name, _arguments), count|
         next unless count > 1
 
         "#{file}: repeated #{strategy}(:#{name}) x#{count}; consider hoist(:#{name})"

@@ -8,6 +8,7 @@ require_relative "factory_hoist/version"
 
 module FactoryHoist
   class Error < StandardError; end
+  class BulkWriteError < Error; end
   class DuplicateHoistError < Error; end
   class FactoryUnavailableError < Error; end
   class MaterializationError < Error; end
@@ -28,10 +29,18 @@ module FactoryHoist
       @configuration = Configuration.new
       stats.reset!
       Runtime.reset!
+      FastBuild.reset! if defined?(FastBuild)
     end
 
     def build(name, *traits, **attributes)
-      run_factory(:build, name, traits, attributes)
+      adapter = configuration.factory_adapter
+      return adapter.call(:build, name, traits, attributes) if adapter
+
+      require_relative "factory_hoist/fast_build"
+      result = FastBuild.call(name, traits, attributes)
+      return result unless result.equal?(FastBuild::FALLBACK)
+
+      call_factory_bot(:build, name, traits, attributes)
     end
 
     def create(name, *traits, **attributes)
@@ -67,18 +76,20 @@ module FactoryHoist
     def with_seed(seed)
       previous = Thread.current[:factory_hoist_random]
       Thread.current[:factory_hoist_random] = Random.new(seed)
-      previous_faker = ::Faker::Config.random if defined?(::Faker::Config)
-      ::Faker::Config.random = Thread.current[:factory_hoist_random] if defined?(::Faker::Config)
+      faker_config = ::Faker::Config if defined?(::Faker::Config)
+      previous_faker = faker_config.random if faker_config
+      faker_config.random = Thread.current[:factory_hoist_random] if faker_config
       yield
     ensure
-      ::Faker::Config.random = previous_faker if defined?(::Faker::Config)
+      faker_config.random = previous_faker if faker_config
       Thread.current[:factory_hoist_random] = previous
     end
 
     private
 
     def run_factory(strategy, name, traits, attributes)
-      adapter = configuration.factory_adapter || default_factory_adapter
+      adapter = configuration.factory_adapter
+      adapter ||= default_factory_adapter
       adapter.call(strategy, name, traits, attributes)
     end
 
@@ -96,3 +107,4 @@ module FactoryHoist
 end
 
 require_relative "factory_hoist/rspec" if defined?(::RSpec)
+require_relative "factory_hoist/minitest" if defined?(::Minitest::Test)

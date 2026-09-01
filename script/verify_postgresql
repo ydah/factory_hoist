@@ -1,0 +1,52 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require "active_record"
+require "factory_hoist"
+
+ActiveRecord::Base.establish_connection(
+  ENV.fetch("DATABASE_URL", "postgresql:///postgres")
+)
+connection = ActiveRecord::Base.connection
+connection.execute <<~SQL
+  CREATE TEMP TABLE factory_hoist_subxid_check (
+    id bigserial PRIMARY KEY,
+    name text NOT NULL
+  ) ON COMMIT PRESERVE ROWS
+SQL
+
+model = Class.new(ActiveRecord::Base) do
+  self.table_name = "factory_hoist_subxid_check"
+end
+FactoryHoist.reset!
+FactoryHoist.configuration.subxid_budget = 60
+FactoryHoist.configuration.factory_adapter = lambda do |_strategy, _name, _traits, attributes|
+  model.create!({name: "hoisted"}.merge(attributes))
+end
+
+definition = FactoryHoist::Definition.new(:record, :record, [], {}, nil, "postgres check")
+session = FactoryHoist::Runtime::Session.new
+group = Object.new
+transaction_ids = []
+subtrans_reads = lambda do
+  connection.select_value("SELECT blks_read FROM pg_stat_slru WHERE name = 'Subtrans'").to_i
+end
+before_reads = subtrans_reads.call
+
+session.enter(group, {record: definition})
+61.times do
+  example = Object.new
+  example.define_singleton_method(:run) do
+    connection.execute("INSERT INTO factory_hoist_subxid_check(name) VALUES ('example')")
+    transaction_ids << connection.select_value("SELECT txid_current()")
+  end
+  session.around_example(example)
+end
+session.leave(group)
+
+raise "outer transaction was not rebuilt" unless transaction_ids.uniq.size == 2
+raise "unexpected subtrans disk read" unless subtrans_reads.call == before_reads
+raise "hoisted rows leaked" unless model.count.zero?
+
+puts "PostgreSQL subxid budget verified: 61 writes, 1 rebuild, 0 Subtrans reads"

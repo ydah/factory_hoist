@@ -98,6 +98,13 @@ RSpec.describe "FactoryHoist bulk writer" do
 
     expect(FactoryHoistUser.pluck(:name)).to eq(%w[bulk bulk])
   end
+
+
+  it "identifies the failing row without leaving partial inserts" do
+    expect { FactoryHoist.unsafe_bulk_insert(:factory_hoist_user, 2, name: nil) }
+      .to raise_error(FactoryHoist::BulkWriteError, /row 0/)
+    expect(FactoryHoistUser.count).to eq(0)
+  end
 end
 
 RSpec.describe FactoryHoist::DatabaseSnapshot do

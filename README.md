@@ -50,6 +50,12 @@ FactoryHoist.build_list(:user, 3)
 FactoryHoist.create_list(:user, 3)
 ```
 
+Simple callback-free builds are compiled to a Ruby file under the system temporary directory and bypass FactoryBot's evaluation pipeline. Traits, callbacks, required constructors, and unsupported definitions automatically fall back to FactoryBot. Run the fixed-condition benchmark with:
+
+```console
+$ bundle exec ruby bench/fast_build.rb
+```
+
 Bulk insertion is explicitly unsafe because it skips validations and callbacks:
 
 ```ruby
@@ -80,7 +86,7 @@ The command reports repeated literal factory calls and declarations that appear 
 
 ## Constraints
 
-- RSpec is supported. Minitest group lifecycle support is not implemented.
+- Minitest accepts the same DSL and safely creates once per test; cross-test hoisting is intentionally disabled because Minitest has no portable group lifecycle.
 - `after_commit` does not fire inside the managed transaction.
 - Objects that `Marshal` cannot copy silently use example-local creation and increment the degradation counter.
 - DatabaseCleaner truncation is incompatible and emits a warning; use its transaction strategy.
@@ -90,6 +96,14 @@ The command reports repeated literal factory calls and declarations that appear 
 ## Development
 
 Run `bundle install`, then `bundle exec rake`. The suite includes an in-memory SQLite integration test for transaction and savepoint behavior.
+
+With a local PostgreSQL server available, verify the subtransaction budget using a temporary table:
+
+```console
+$ DATABASE_URL=postgresql:///postgres bundle exec ruby script/verify_postgresql
+```
+
+The design-to-implementation adversarial review is recorded in [docs/adversarial-audit.md](docs/adversarial-audit.md).
 
 ## Contributing
 
