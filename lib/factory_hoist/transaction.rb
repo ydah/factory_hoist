@@ -7,6 +7,8 @@ module FactoryHoist
         @connection = nil
         @owned = false
         @savepoints = []
+        @written = false
+        @write_subscriber = nil
       end
 
       def begin_outer
@@ -14,7 +16,12 @@ module FactoryHoist
         return unless @connection
 
         @owned = !@connection.transaction_open?
-        @connection.begin_transaction(joinable: false) if @owned
+        if @owned
+          @connection.begin_transaction(joinable: false)
+          @write_subscriber = ActiveSupport::Notifications.subscribe("sql.active_record") do |*, payload|
+            @written = true if payload[:connection].equal?(@connection) && @connection.write_query?(payload[:sql])
+          end
+        end
       end
 
       def create_savepoint(name)
@@ -42,12 +49,23 @@ module FactoryHoist
       def rollback_outer
         @connection.rollback_transaction if usable? && @owned
       ensure
+        ActiveSupport::Notifications.unsubscribe(@write_subscriber) if @write_subscriber
+        @write_subscriber = nil
+        @written = false
         @savepoints.clear
         @owned = false
       end
 
       def owned?
         @owned
+      end
+
+      def written?
+        @written
+      end
+
+      def clear_written!
+        @written = false
       end
 
       private

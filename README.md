@@ -74,7 +74,7 @@ FactoryHoist.configure do |config|
 end
 ```
 
-`subxid_budget` rebuilds an owned outer transaction after that many examples. Set it to `0` to disable rebuilding. `suite_seed` makes `FactoryHoist.random` deterministic for a declaration path and key, including Faker-backed Fast Build attributes. `paranoid_mode` checks hoisted ActiveRecord rows before and after every example and raises if they changed.
+`subxid_budget` rebuilds an owned outer transaction after that many examples. Rebuilding is deferred while an active `before(:context)` hook has written database state that FactoryHoist cannot rematerialize; move that setup into `hoist` if the budget must remain strict. Set it to `0` to disable rebuilding. `suite_seed` makes `FactoryHoist.random` deterministic for a declaration path and key, including Faker-backed Fast Build attributes. `paranoid_mode` checks hoisted ActiveRecord rows before and after every example and raises if they changed.
 
 ### Advice and statistics
 

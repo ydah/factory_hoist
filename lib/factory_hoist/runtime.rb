@@ -43,6 +43,7 @@ module FactoryHoist
         @transaction.create_savepoint(scope.savepoint)
         @scopes << scope
         scope.materialize! if materialize
+        @transaction.clear_written! if materialize && @transaction.owned?
       rescue Exception # rubocop:disable Lint/RescueException
         @scopes.pop if @scopes.last == scope
         @transaction.rollback_savepoint(scope.savepoint) if scope
@@ -54,12 +55,15 @@ module FactoryHoist
         scope = @scopes.last
         raise Error, "hoist scope mismatch" unless scope&.group&.equal?(group)
 
+        preserve_unmanaged_writes
         @transaction.create_savepoint(scope.savepoint)
         scope.materialize!
       rescue Exception # rubocop:disable Lint/RescueException
         @transaction.rollback_savepoint(scope.savepoint) if scope
         scope&.values&.clear
         raise
+      ensure
+        @transaction.clear_written! if @transaction.owned?
       end
 
       def leave(group)
@@ -69,6 +73,7 @@ module FactoryHoist
 
         @scopes.pop
         @transaction.rollback_savepoint(scope.savepoint)
+        @transaction.clear_written! if @transaction.owned?
         if @scopes.empty?
           @transaction.rollback_outer
           @examples_since_begin = 0
@@ -81,6 +86,7 @@ module FactoryHoist
 
         @transaction.begin_outer if local_transaction
 
+        preserve_unmanaged_writes
         rebuild_if_needed
         savepoint = "factory_hoist_example_#{example.object_id}"
         @transaction.create_savepoint(savepoint)
@@ -93,6 +99,7 @@ module FactoryHoist
         end
       ensure
         @transaction.rollback_savepoint(savepoint) if savepoint
+        @transaction.clear_written! if @transaction.owned?
         if local_transaction
           @transaction.rollback_outer
           @examples_since_begin = 0
@@ -119,9 +126,17 @@ module FactoryHoist
 
       private
 
+      def preserve_unmanaged_writes
+        return unless @transaction.owned? && @transaction.written?
+
+        # ponytail: nested hook ownership is ambiguous; defer rebuilding all active scopes unless this becomes costly.
+        @scopes.each { |scope| scope.rebuildable = false }
+        @transaction.clear_written!
+      end
+
       def rebuild_if_needed
         budget = FactoryHoist.configuration.subxid_budget
-        return unless @transaction.owned? && budget.positive? && @examples_since_begin >= budget
+        return unless @transaction.owned? && @scopes.all?(&:rebuildable) && budget.positive? && @examples_since_begin >= budget
 
         @transaction.rollback_outer
         @transaction.begin_outer
@@ -129,6 +144,7 @@ module FactoryHoist
           @transaction.create_savepoint(scope.savepoint)
           scope.materialize!
         end
+        @transaction.clear_written!
         @examples_since_begin = 0
         FactoryHoist.stats.increment(:transaction_rebuilds)
       rescue Exception # rubocop:disable Lint/RescueException
@@ -139,6 +155,7 @@ module FactoryHoist
     end
 
     class Scope
+      attr_accessor :rebuildable
       attr_reader :definitions, :group, :values
 
       def initialize(group, definitions, ancestors)
@@ -147,6 +164,7 @@ module FactoryHoist
         @ancestors = ancestors.dup
         @values = {}
         @materializing = []
+        @rebuildable = true
       end
 
       def savepoint

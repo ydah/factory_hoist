@@ -54,6 +54,21 @@ raise "unexpected subtrans disk read" unless subtrans_reads.call == before_reads
 raise "hoisted rows leaked" unless model.count.zero?
 raise "pg_control_checkpoint unavailable" unless checkpoint
 
+FactoryHoist.configuration.subxid_budget = 1
+context_group = Object.new
+session.enter(context_group, {record: definition}, materialize: false)
+model.create!(name: "context setup")
+session.materialize(context_group)
+2.times do
+  example = Object.new
+  example.define_singleton_method(:run) do
+    raise "context setup was lost during rebuild" unless model.count == 2
+  end
+  session.around_example(example)
+end
+session.leave(context_group)
+raise "context setup leaked" unless model.count.zero?
+
 FactoryBot.define do
   factory :factory_hoist_postgres_bulk_check, class: model do
     name { "bulk" }
@@ -84,4 +99,4 @@ FactoryHoist.reset!
 raise "reset left a transaction open" if connection.transaction_open?
 raise "reset leaked rows" unless model.count.zero?
 
-puts "PostgreSQL verified: subxid budget, bulk failure recovery, and reset cleanup"
+puts "PostgreSQL verified: subxid budget, context state, bulk failure recovery, and reset cleanup"

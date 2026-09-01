@@ -62,7 +62,7 @@ end
 RSpec.describe "FactoryHoist context hook isolation" do
   before(:context) do
     FactoryHoist.configuration.factory_adapter = nil
-    FactoryHoist.configuration.subxid_budget = 60
+    FactoryHoist.configuration.subxid_budget = 1
   end
   before(:context) { FactoryHoistUser.create!(name: "context setup") }
   after(:context) { expect(FactoryHoistUser.count).to eq(2) }
@@ -72,6 +72,35 @@ RSpec.describe "FactoryHoist context hook isolation" do
   it "wraps existing context hooks in the group transaction" do
     expect(user.name).to eq("original")
     expect(FactoryHoistUser.count).to eq(2)
+  end
+
+  it "preserves context hook writes across transaction rebuilds" do
+    expect(user.name).to eq("original")
+    expect(FactoryHoistUser.count).to eq(2)
+  end
+end
+
+RSpec.describe "FactoryHoist nested context hook rebuild safety" do
+  before(:context) do
+    FactoryHoist.configuration.factory_adapter = nil
+    FactoryHoist.configuration.subxid_budget = 1
+  end
+
+  hoist(:user, :factory_hoist_user)
+
+  it "uses the parent hoist before entering the nested context" do
+    expect(user.name).to eq("original")
+    expect(FactoryHoistUser.count).to eq(1)
+  end
+
+  context "with database setup but no scheduled child scope" do
+    before(:context) { FactoryHoistUser.create!(name: "nested context setup") }
+    after(:context) { expect(FactoryHoistUser.count).to eq(2) }
+
+    it "does not discard the nested context setup when the budget is reached" do
+      expect(user.name).to eq("original")
+      expect(FactoryHoistUser.count).to eq(2)
+    end
   end
 end
 
