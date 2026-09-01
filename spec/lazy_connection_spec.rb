@@ -2,8 +2,18 @@
 
 require "open3"
 require "rbconfig"
+require "active_record"
 
 RSpec.describe "FactoryHoist lazy connection cleanup" do
+  it "propagates configured connection failures before factory execution" do
+    connection_handler = ActiveRecord::Base.connection_handler
+    allow(connection_handler).to receive(:retrieve_connection_pool).and_return(Object.new)
+    allow(ActiveRecord::Base).to receive(:connection).and_raise("connection failed")
+    transaction = FactoryHoist::Runtime::Transaction.new
+
+    expect { transaction.begin_outer }.to raise_error("connection failed")
+  end
+
   it "starts a transaction before an example-local factory opens the connection" do
     script = <<~'RUBY'
       require "active_record"

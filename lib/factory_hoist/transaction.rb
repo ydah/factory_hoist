@@ -60,10 +60,12 @@ module FactoryHoist
 
       def active_record_connection
         return unless defined?(::ActiveRecord::Base)
+        pool = ::ActiveRecord::Base.connection_handler.retrieve_connection_pool(
+          ::ActiveRecord::Base.connection_specification_name
+        )
+        return unless pool
 
         ::ActiveRecord::Base.connection
-      rescue StandardError
-        nil
       end
     end
   end

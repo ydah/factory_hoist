@@ -18,18 +18,28 @@ RSpec.describe FactoryHoist do
   end
 
   it "delegates build and create calls to the configured adapter" do
-    expect(described_class.build(:user, :admin, active: true)).to eq(
+    yielded = []
+    built = described_class.build(:user, :admin, active: true) { |record| yielded << record }
+    created = described_class.create(:user) { |record| yielded << record }
+
+    expect(built).to eq(
       strategy: :build,
       name: :user,
       traits: [:admin],
       attributes: {active: true}
     )
-    expect(described_class.create(:user)).to include(strategy: :create)
+    expect(created).to include(strategy: :create)
+    expect(yielded).to eq([built, created])
   end
 
   it "builds lists without requiring an adapter-specific list API" do
-    expect(described_class.build_list(:user, 2).size).to eq(2)
-    expect(described_class.create_list(:user, 3).size).to eq(3)
+    built = []
+    created = []
+
+    expect(described_class.build_list(:user, 2) { |record, index| built << [record, index] }.size).to eq(2)
+    expect(described_class.create_list(:user, 3) { |record, index| created << [record, index] }.size).to eq(3)
+    expect(built.map(&:last)).to eq([0, 1])
+    expect(created.map(&:last)).to eq([0, 1, 2])
   end
 
   it "derives stable, node-specific seeds" do
@@ -189,6 +199,10 @@ class AliasFastBuildParent
   attr_accessor :child, :child_id
 end
 
+class KeywordFastBuildRecord
+  attr_accessor :if, :Foo
+end
+
 FactoryBot.define do
   factory :fast_build_user do
     first_name { "Ada" }
@@ -243,6 +257,10 @@ FactoryBot.define do
   factory :alias_fast_build_parent do
     association :child, factory: :alias_fast_build_child
     child_id { 0 }
+  end
+  factory :keyword_fast_build_record do
+    add_attribute(:if) { "value" }
+    add_attribute(:Foo) { "uppercase" }
   end
 end
 
@@ -336,6 +354,14 @@ RSpec.describe FactoryHoist::FastBuild do
     expect(parent.child).to be_nil
     expect(parent.child_id).to eq(99)
     expect(FactoryBot.generate(:fast_build_alias_probe)).to eq(1)
+  end
+
+  it "falls back when attribute names cannot be emitted as local variables" do
+    record = FactoryHoist.build(:keyword_fast_build_record)
+
+    expect(record.public_send(:if)).to eq("value")
+    expect(record.public_send(:Foo)).to eq("uppercase")
+    expect(described_class.compiled_source(:keyword_fast_build_record)).to be_nil
   end
 end
 

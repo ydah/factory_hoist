@@ -39,22 +39,30 @@ module FactoryHoist
       FastBuild.reset! if defined?(FastBuild)
     end
 
-    def build(name, *traits, **attributes)
-      return build_factory(name, traits, attributes) unless defined?(::Faker::Config)
+    def build(name, *traits, **attributes, &block)
+      result = if defined?(::Faker::Config)
+        with_random_source(random) { build_factory(name, traits, attributes) }
+      else
+        build_factory(name, traits, attributes)
+      end
 
-      with_random_source(random) { build_factory(name, traits, attributes) }
+      result.tap { |record| block&.call(record) }
     end
 
-    def create(name, *traits, **attributes)
-      run_factory(:create, name, traits, attributes)
+    def create(name, *traits, **attributes, &block)
+      run_factory(:create, name, traits, attributes).tap { |record| block&.call(record) }
     end
 
-    def build_list(name, count, *traits, **attributes)
-      Array.new(count) { build(name, *traits, **attributes) }
+    def build_list(name, count, *traits, **attributes, &block)
+      Array.new(count) do |index|
+        build(name, *traits, **attributes).tap { |record| block&.call(record, index) }
+      end
     end
 
-    def create_list(name, count, *traits, **attributes)
-      Array.new(count) { create(name, *traits, **attributes) }
+    def create_list(name, count, *traits, **attributes, &block)
+      Array.new(count) do |index|
+        create(name, *traits, **attributes).tap { |record| block&.call(record, index) }
+      end
     end
 
     def unsafe_bulk_insert(name, count, *traits, **attributes)

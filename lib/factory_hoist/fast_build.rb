@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "fileutils"
+require "ripper"
 require "tmpdir"
 
 module FactoryHoist
@@ -143,7 +144,9 @@ module FactoryHoist
         required_arguments = klass.instance_method(:initialize).parameters.any? do |type, _name|
           %i[req keyreq].include?(type)
         end
-        invalid_name = names.any? { |name| !name.match?(/\A[a-z_]\w*\z/i) || reserved.include?(name) }
+        invalid_name = names.any? do |name|
+          !name.match?(/\A[a-z_]\w*\z/) || reserved.include?(name) || Ripper.lex(name.to_s).first[1] == :on_kw
+        end
         return if required_arguments || !klass.name || invalid_name
 
         {

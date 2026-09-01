@@ -14,13 +14,13 @@ Audited against `.idea/factory_hoist-design.md` on 2026-09-01.
 | Deterministic node/key seed | BLAKE2b-based seed test; Faker random source is scoped when Faker is loaded |
 | PCG random source | Canonical PCG32 vector, arbitrary-size integers, numeric ranges, real Faker inputs, reset reproducibility, and thread-isolated Faker scopes |
 | Failure locality | Materialization errors include the declaration node and key |
-| FactoryBot build/create/list compatibility | Unit and ActiveRecord integration tests |
-| Fast Build | Bounded per-process paths, generated-file backtraces, reload-safe constants, association/alias semantics, evaluator-name collisions, and no retry after evaluator errors; benchmark above 8x |
+| FactoryBot build/create/list compatibility | Unit and ActiveRecord integration tests, including FactoryBot-compatible block yields |
+| Fast Build | Bounded per-process paths, generated-file backtraces, reload-safe constants, association/alias semantics, generated-name safety, evaluator-name collisions, and no retry after evaluator errors; benchmark above 8x |
 | Bulk Writer | ActiveRecord `insert_all!`, native type casting, row diagnosis, and PostgreSQL outer-transaction recovery after failure |
 | DatabaseCleaner warning and paranoid row checks | Unit and ActiveRecord tests, including named, anonymous, composite-key, and keyless models |
 | RSpec and Minitest correctness | Primary-entrypoint load-order test; RSpec sharing; Minitest deliberately deoptimizes to per-test creation |
 | Packaging and CLI | Gem build, unpacked executable, and CI/full-suite coverage on the declared minimum Ruby 3.2 |
-| Process-parallel database initialization | SQLite exclusive no-overwrite copy; PostgreSQL verifies active-source refusal, lock release, successful clone, and existing-target refusal |
+| Process-parallel database initialization | SQLite online backup covers WAL recovery and exclusive no-overwrite creation; PostgreSQL verifies active-source refusal, lock release, successful clone, and existing-target refusal |
 | Phase 0 harness | Reproducible synthetic three-way benchmark in `docs/phase0-synthetic.md` |
 
 ## Not claimable from this repository
