@@ -223,6 +223,23 @@ RSpec.describe "FactoryHoist dependency ordering" do
   end
 end
 
+RSpec.describe "FactoryHoist context method collisions" do
+  before(:context) do
+    FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, attributes|
+      Struct.new(:kind, :attributes).new(name, attributes)
+    end
+  end
+
+  hoist(:fetch)
+  hoist(:evaluate)
+  hoist(:dependent) { {fetch: fetch, evaluate: evaluate} }
+
+  it "allows internal context method names as declaration keys" do
+    expect(dependent.attributes[:fetch].kind).to eq(:fetch)
+    expect(dependent.attributes[:evaluate].kind).to eq(:evaluate)
+  end
+end
+
 RSpec.describe "FactoryHoist custom persistence fallback" do
   before(:context) do
     FactoryHoist.configuration.factory_adapter = nil

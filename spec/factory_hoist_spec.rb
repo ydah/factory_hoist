@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "factory_hoist/fast_build"
+require "faker"
 
 RSpec.describe FactoryHoist do
   before do
@@ -48,7 +49,23 @@ RSpec.describe FactoryHoist do
     expect(first.rand(3..5)).to be_between(3, 5)
     expect(first.bytes(4).bytesize).to eq(4)
     expect { first.rand(5...5) }.to raise_error(ArgumentError)
-    expect { first.rand((1 << 32) + 1) }.to raise_error(ArgumentError)
+    expect(first.rand((1 << 32) + 1)).to be_between(0, 1 << 32)
+    expect(first.rand(2.0..10.0)).to be_between(2.0, 10.0)
+  end
+
+  it "supports Faker's full random input surface deterministically" do
+    generate = lambda do
+      [
+        Faker::Beer.alcohol,
+        Faker::Code.npi,
+        Faker::Date.between(from: Date.new(2020, 1, 1), to: Date.new(2030, 1, 1)),
+        Faker::Time.between(from: Time.at(0), to: Time.at(1_000))
+      ]
+    end
+    first = described_class.with_seed(123, &generate)
+    second = described_class.with_seed(123, &generate)
+
+    expect(second).to eq(first)
   end
 
   it "scopes deterministic PCG state through build and reset" do
@@ -164,6 +181,14 @@ class ReservedFastBuildRecord
   attr_accessor :build
 end
 
+class AliasFastBuildChild
+  attr_accessor :marker
+end
+
+class AliasFastBuildParent
+  attr_accessor :child, :child_id
+end
+
 FactoryBot.define do
   factory :fast_build_user do
     first_name { "Ada" }
@@ -210,6 +235,14 @@ FactoryBot.define do
   end
   factory :"../unsafe fast build", class: FastBuildUser do
     first_name { "safe" }
+  end
+  sequence(:fast_build_alias_probe)
+  factory :alias_fast_build_child do
+    marker { generate(:fast_build_alias_probe) }
+  end
+  factory :alias_fast_build_parent do
+    association :child, factory: :alias_fast_build_child
+    child_id { 0 }
   end
 end
 
@@ -281,6 +314,28 @@ RSpec.describe FactoryHoist::FastBuild do
 
     expect(File.dirname(source)).to eq(File.join(Dir.tmpdir, "factory_hoist"))
     expect(File.basename(source)).to include("_#{Process.pid}_")
+  end
+
+  it "caps generated filenames for long factory names" do
+    name = ("long_factory_" + ("x" * 300)).to_sym
+    FactoryBot.define do
+      factory name, class: FastBuildUser do
+        first_name { "long" }
+      end
+    end
+
+    expect(FactoryHoist.build(name).first_name).to eq("long")
+    expect(File.basename(described_class.compiled_source(name)).bytesize).to be < 255
+  end
+
+  it "falls back when an override aliases an association" do
+    FactoryBot.rewind_sequence(:fast_build_alias_probe)
+
+    parent = FactoryHoist.build(:alias_fast_build_parent, child_id: 99)
+
+    expect(parent.child).to be_nil
+    expect(parent.child_id).to eq(99)
+    expect(FactoryBot.generate(:fast_build_alias_probe)).to eq(1)
   end
 end
 

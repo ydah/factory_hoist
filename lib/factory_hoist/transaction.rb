@@ -18,6 +18,9 @@ module FactoryHoist
       end
 
       def create_savepoint(name)
+        return if @savepoints.include?(name)
+
+        begin_outer unless usable?
         return unless usable?
 
         @connection.create_savepoint(name)
@@ -30,6 +33,10 @@ module FactoryHoist
         @connection.rollback_to_savepoint(name)
         @connection.release_savepoint(name)
         @savepoints.delete(name)
+      end
+
+      def rollback_savepoints
+        rollback_savepoint(@savepoints.last) while usable? && @savepoints.any?
       end
 
       def rollback_outer
@@ -47,6 +54,8 @@ module FactoryHoist
 
       def usable?
         @connection && @connection.transaction_open?
+      rescue StandardError
+        false
       end
 
       def active_record_connection

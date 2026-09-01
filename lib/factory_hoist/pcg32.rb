@@ -17,6 +17,7 @@ module FactoryHoist
       return next_uint32.fdiv(1 << 32) unless limit
       return integer(limit) if limit.is_a?(Integer)
       return range(limit) if limit.is_a?(Range)
+      return rand * limit if limit.is_a?(Numeric) && limit.positive?
 
       raise ArgumentError, "unsupported random limit: #{limit.inspect}"
     end
@@ -28,24 +29,40 @@ module FactoryHoist
     private
 
     def integer(limit)
-      unless limit.positive? && limit <= (1 << 32)
-        raise ArgumentError, "random limit must be between 1 and 2^32: #{limit}"
-      end
+      raise ArgumentError, "random limit must be positive: #{limit}" unless limit.positive?
+      return 0 if limit == 1
 
-      threshold = ((1 << 32) - limit) % limit
+      bits = (limit - 1).bit_length
+      words = (bits + 31) / 32
+      mask = (1 << bits) - 1
       loop do
-        value = next_uint32
-        return value % limit if value >= threshold
+        value = 0
+        words.times { value = (value << 32) | next_uint32 }
+        value &= mask
+        return value if value < limit
       end
     end
 
     def range(value)
       first = value.begin
       last = value.end
-      raise ArgumentError, "non-integer ranges are unsupported" unless first.is_a?(Integer) && last.is_a?(Integer)
+      if first.is_a?(Integer) && last.is_a?(Integer)
+        size = last - first + (value.exclude_end? ? 0 : 1)
+        return first + integer(size)
+      end
+      if defined?(::Date) && first.instance_of?(::Date) && last.instance_of?(::Date)
+        size = (last - first).to_i + (value.exclude_end? ? 0 : 1)
+        return first + integer(size)
+      end
+      return first if first == last && !value.exclude_end?
 
-      size = last - first + (value.exclude_end? ? 0 : 1)
-      first + integer(size)
+      size = last - first
+      raise ArgumentError, "non-numeric range distance: #{value.inspect}" unless size.is_a?(Numeric)
+      raise ArgumentError, "empty random range: #{value.inspect}" unless size.positive?
+
+      first + (rand * size)
+    rescue NoMethodError
+      raise ArgumentError, "unsupported random range: #{value.inspect}"
     end
 
     def next_uint32

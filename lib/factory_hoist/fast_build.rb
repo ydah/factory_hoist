@@ -18,6 +18,13 @@ module FactoryHoist
         key = name.is_a?(Symbol) ? name : name.to_sym
         cached = @compiled[key]
         evaluator = cached ? cached[:evaluator] : compile(key)
+        if evaluator && !overrides.empty?
+          override_names = overrides.keys.map(&:to_sym)
+          aliases = evaluator.factory_ir[:attributes].any? do |attribute|
+            override_names.any? { |override| attribute.name != override && attribute.alias_for?(override) }
+          end
+          return FALLBACK if aliases
+        end
         evaluator ? evaluator.new(overrides).build : FALLBACK
       end
 
@@ -35,7 +42,7 @@ module FactoryHoist
 
           install_reload_hook
           @generation += 1
-          safe_name = name.to_s.gsub(/[^a-zA-Z0-9_-]/, "_")
+          safe_name = name.to_s.gsub(/[^a-zA-Z0-9_-]/, "_")[0, 80]
           token = "#{safe_name}_#{Process.pid}_#{factory.object_id}_#{@generation}"
           @pending[token] = ir
           path = source_path(token)

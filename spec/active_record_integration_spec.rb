@@ -160,6 +160,19 @@ RSpec.describe FactoryHoist::DatabaseSnapshot do
     session&.leave(group) if group
     FactoryHoist.configuration.paranoid_mode = false
   end
+
+  it "snapshots named and anonymous ActiveRecord models together" do
+    anonymous = Class.new(ActiveRecord::Base) do
+      self.table_name = "factory_hoist_users"
+    end
+    named_record = FactoryHoistUser.create!(name: "named")
+    anonymous_record = anonymous.create!(name: "anonymous")
+    scope = Struct.new(:values).new({named: named_record, anonymous: anonymous_record})
+
+    expect(described_class.call([scope])).to match(/\A[0-9a-f]{64}\z/)
+  ensure
+    FactoryHoistUser.where(id: [named_record&.id, anonymous_record&.id]).delete_all
+  end
 end
 
 RSpec.describe "FactoryHoist materialization failure cleanup" do
@@ -181,6 +194,51 @@ RSpec.describe "FactoryHoist materialization failure cleanup" do
     expect(FactoryHoistUser.count).to eq(0)
   ensure
     session&.leave(group) if group
+  end
+end
+
+RSpec.describe "FactoryHoist late connection cleanup" do
+  it "starts the group transaction when the connection becomes available" do
+    FactoryHoist.configuration.factory_adapter = nil
+    session = FactoryHoist::Runtime::Session.new
+    transaction = session.instance_variable_get(:@transaction)
+    connection = ActiveRecord::Base.connection
+    allow(transaction).to receive(:active_record_connection).and_return(nil, nil, connection)
+    definition = FactoryHoist::Definition.new(
+      :user, :factory_hoist_user, [], {}, nil, "late connection"
+    )
+    group = Object.new
+    session.enter(group, {user: definition}, materialize: false)
+    session.materialize(group)
+
+    expect(FactoryHoistUser.count).to eq(1)
+    session.leave(group)
+    group = nil
+    expect(FactoryHoistUser.count).to eq(0)
+  ensure
+    session&.leave(group) if group
+    FactoryHoistUser.delete_all
+  end
+end
+
+RSpec.describe "FactoryHoist reset cleanup" do
+  it "rolls back an active runtime before replacing it" do
+    FactoryHoist.reset!
+    FactoryHoist.configuration.factory_adapter = nil
+    definition = FactoryHoist::Definition.new(
+      :user, :factory_hoist_user, [], {}, nil, "reset cleanup"
+    )
+    FactoryHoist::Runtime.current.enter(Object.new, {user: definition})
+
+    expect(FactoryHoistUser.count).to eq(1)
+    FactoryHoist.reset!
+
+    expect(FactoryHoistUser.count).to eq(0)
+    expect(ActiveRecord::Base.connection).not_to be_transaction_open
+  ensure
+    ActiveRecord::Base.connection.rollback_transaction if ActiveRecord::Base.connection.transaction_open?
+    FactoryHoistUser.delete_all
+    FactoryHoist.reset!
   end
 end
 

@@ -40,7 +40,7 @@ module FactoryHoist
 
     alias_method :[], :fetch
 
-    def evaluate(&block)
+    def __factory_hoist_evaluate__(&block)
       @test.instance_exec(&block)
     end
 

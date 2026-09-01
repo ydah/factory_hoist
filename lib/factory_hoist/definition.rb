@@ -4,7 +4,7 @@ module FactoryHoist
   Definition = Data.define(:name, :factory, :traits, :attributes, :block, :node_path) do
     def materialize(context)
       dynamic_attributes = if block
-        block.arity == 1 ? block.call(context) : context.evaluate(&block)
+        block.arity == 1 ? block.call(context) : context.__factory_hoist_evaluate__(&block)
       else
         {}
       end

@@ -17,6 +17,8 @@ module FactoryHoist
     end
 
     def reset!
+      Thread.current[THREAD_KEY]&.close
+    ensure
       Thread.current[THREAD_KEY] = nil
     end
 
@@ -52,6 +54,7 @@ module FactoryHoist
         scope = @scopes.last
         raise Error, "hoist scope mismatch" unless scope&.group&.equal?(group)
 
+        @transaction.create_savepoint(scope.savepoint)
         scope.materialize!
       rescue Exception # rubocop:disable Lint/RescueException
         @transaction.rollback_savepoint(scope.savepoint) if scope
@@ -104,6 +107,14 @@ module FactoryHoist
           example_instance.instance_variable_set(:@__factory_hoist_values, state)
         end
         state.fetch(name, fallback)
+      end
+
+      def close
+        @transaction.rollback_savepoints
+      ensure
+        @transaction.rollback_outer
+        @scopes.clear
+        @examples_since_begin = 0
       end
 
       private
@@ -173,30 +184,30 @@ module FactoryHoist
       end
 
       def [](name)
-        fetch(name)
+        __factory_hoist_fetch__(name)
       end
 
-      def evaluate(&block)
+      def __factory_hoist_evaluate__(&block)
         instance_exec(&block)
       end
 
       def method_missing(name, ...)
-        return fetch(name) if available?(name)
+        return __factory_hoist_fetch__(name) if __factory_hoist_available?(name)
 
         super
       end
 
       def respond_to_missing?(name, include_private = false)
-        available?(name) || super
+        __factory_hoist_available?(name) || super
       end
 
       private
 
-      def available?(name)
+      def __factory_hoist_available?(name)
         @scopes.reverse_each.any? { |scope| scope.values.key?(name) || scope.definitions.key?(name) }
       end
 
-      def fetch(name)
+      def __factory_hoist_fetch__(name)
         scope = @scopes.reverse_each.find { |candidate| candidate.values.key?(name) }
         if scope
           definition = scope.definitions.fetch(name)
@@ -278,7 +289,7 @@ module FactoryHoist
         @values.fetch(name)
       end
 
-      def evaluate(&block)
+      def __factory_hoist_evaluate__(&block)
         @example.instance_exec(&block)
       end
 

@@ -11,10 +11,11 @@ module FactoryHoist
       records = records_in(scopes.flat_map { |scope| scope.values.values })
       return if records.empty?
 
-      rows = records.sort_by { |record| [record.class.name, record.id.to_s] }.map do |record|
+      rows = records.map do |record|
         primary_key = record.class.primary_key
-        [record.class.name, record.id, record.class.unscoped.find_by(primary_key => record.id)&.attributes]
-      end
+        model = record.class.name || "table:#{record.class.table_name}"
+        [model, record.id, record.class.unscoped.find_by(primary_key => record.id)&.attributes]
+      end.sort_by { |model, id, _attributes| [model, id.to_s] }
       Digest::SHA256.hexdigest(Marshal.dump(rows))
     end
 

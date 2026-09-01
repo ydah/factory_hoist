@@ -72,4 +72,16 @@ connection.transaction(requires_new: true) do
 end
 raise "bulk verification leaked rows" unless model.count.zero?
 
-puts "PostgreSQL verified: subxid budget, activity/checkpoint stats, and bulk failure recovery"
+FactoryHoist.configuration.factory_adapter = lambda do |_strategy, _name, _traits, attributes|
+  model.create!({name: "reset"}.merge(attributes))
+end
+reset_definition = FactoryHoist::Definition.new(:record, :record, [], {}, nil, "reset check")
+FactoryHoist::Runtime.current.enter(Object.new, {record: reset_definition})
+raise "reset setup failed" unless model.count == 1
+
+FactoryHoist.reset!
+
+raise "reset left a transaction open" if connection.transaction_open?
+raise "reset leaked rows" unless model.count.zero?
+
+puts "PostgreSQL verified: subxid budget, bulk failure recovery, and reset cleanup"
