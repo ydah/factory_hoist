@@ -17,7 +17,21 @@ jobs:
     strategy:
       matrix:
         ruby:
+          - '3.2'
           - '4.0'
+
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
 
     steps:
       - uses: actions/checkout@v6
@@ -30,3 +44,17 @@ jobs:
           bundler-cache: true
       - name: Run the default task
         run: bundle exec rake
+      - name: Verify performance gates
+        run: |
+          bundle exec ruby bench/fast_build.rb
+          bundle exec ruby bench/phase0_synthetic.rb
+      - name: Verify PostgreSQL paths
+        env:
+          DATABASE_URL: postgresql://postgres:postgres@localhost:5432/postgres
+          PGHOST: localhost
+          PGPASSWORD: postgres
+          PGPORT: 5432
+          PGUSER: postgres
+        run: |
+          bundle exec ruby script/verify_postgresql
+          bundle exec ruby script/verify_postgresql_clone

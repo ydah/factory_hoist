@@ -33,5 +33,6 @@ RSpec.describe FactoryHoist::MinitestDSL do
 
   it "rejects duplicate declarations in one class" do
     expect { test_class.hoist(:company) }.to raise_error(FactoryHoist::DuplicateHoistError)
+    expect { test_class.hoist("company") }.to raise_error(FactoryHoist::DuplicateHoistError)
   end
 end

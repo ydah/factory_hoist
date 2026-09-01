@@ -208,6 +208,9 @@ FactoryBot.define do
   factory :reserved_fast_build_record do
     build { "attribute value" }
   end
+  factory :"../unsafe fast build", class: FastBuildUser do
+    first_name { "safe" }
+  end
 end
 
 RSpec.describe FactoryHoist::FastBuild do
@@ -270,5 +273,24 @@ RSpec.describe FactoryHoist::FastBuild do
   it "falls back when an attribute conflicts with evaluator methods" do
     expect(FactoryHoist.build(:reserved_fast_build_record).build).to eq("attribute value")
     expect(described_class.compiled_source(:reserved_fast_build_record)).to be_nil
+  end
+
+  it "uses safe process-specific generated paths" do
+    FactoryHoist.build(:"../unsafe fast build")
+    source = described_class.compiled_source(:"../unsafe fast build")
+
+    expect(File.dirname(source)).to eq(File.join(Dir.tmpdir, "factory_hoist"))
+    expect(File.basename(source)).to include("_#{Process.pid}_")
+  end
+end
+
+RSpec.describe FactoryHoist::Runtime::Scope do
+  it "captures its ancestor scopes instead of retaining descendant mutations" do
+    ancestors = []
+    scope = described_class.new(Object.new, {}, ancestors)
+
+    ancestors << Object.new
+
+    expect(scope.instance_variable_get(:@ancestors)).to be_empty
   end
 end

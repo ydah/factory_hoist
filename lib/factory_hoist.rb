@@ -88,7 +88,7 @@ module FactoryHoist
       adapter = configuration.factory_adapter
       return adapter.call(:build, name, traits, attributes) if adapter
 
-      require_relative "factory_hoist/fast_build"
+      require_relative "factory_hoist/fast_build" unless defined?(::FactoryHoist::FastBuild)
       result = FastBuild.call(name, traits, attributes)
       return result unless result.equal?(FastBuild::FALLBACK)
 

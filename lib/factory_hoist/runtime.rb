@@ -133,7 +133,7 @@ module FactoryHoist
       def initialize(group, definitions, ancestors)
         @group = group
         @definitions = definitions
-        @ancestors = ancestors
+        @ancestors = ancestors.dup
         @values = {}
         @materializing = []
       end

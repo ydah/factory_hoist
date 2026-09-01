@@ -3,6 +3,21 @@
 class LocalConstructorRecord
 end
 
+RSpec.describe FactoryHoist::RSpecDSL do
+  it "treats string and symbol declaration names as the same key" do
+    group = Class.new do
+      extend FactoryHoist::RSpecDSL
+
+      def self.metadata
+        {full_description: "duplicate declaration test"}
+      end
+    end
+    group.hoist("company")
+
+    expect { group.hoist(:company) }.to raise_error(FactoryHoist::DuplicateHoistError)
+  end
+end
+
 FactoryBot.define do
   factory :local_constructor_record do
     initialize_with { new }

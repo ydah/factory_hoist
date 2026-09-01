@@ -15,8 +15,9 @@ module FactoryHoist
       def call(name, traits, overrides)
         return FALLBACK unless traits.empty?
 
-        cached = @compiled[name.to_sym]
-        evaluator = cached ? cached[:evaluator] : compile(name)
+        key = name.is_a?(Symbol) ? name : name.to_sym
+        cached = @compiled[key]
+        evaluator = cached ? cached[:evaluator] : compile(key)
         evaluator ? evaluator.new(overrides).build : FALLBACK
       end
 
@@ -34,7 +35,8 @@ module FactoryHoist
 
           install_reload_hook
           @generation += 1
-          token = "#{name}_#{factory.object_id}_#{@generation}"
+          safe_name = name.to_s.gsub(/[^a-zA-Z0-9_-]/, "_")
+          token = "#{safe_name}_#{Process.pid}_#{factory.object_id}_#{@generation}"
           @pending[token] = ir
           path = source_path(token)
           ir[:source_path] = path
@@ -155,8 +157,8 @@ module FactoryHoist
       end
 
       def initialize(overrides)
-        @overrides = overrides.transform_keys(&:to_sym)
-        @cache = @overrides.dup
+        @overrides = overrides.empty? ? overrides : overrides.transform_keys(&:to_sym)
+        @cache = @overrides.empty? ? {} : @overrides.dup
       end
 
       attr_reader :instance

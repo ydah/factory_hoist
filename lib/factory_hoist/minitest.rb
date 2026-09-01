@@ -3,6 +3,7 @@
 module FactoryHoist
   module MinitestDSL
     def hoist(name, factory = name, *traits, **attributes, &block)
+      name = name.to_sym
       definitions = if instance_variable_defined?(:@factory_hoist_definitions)
         @factory_hoist_definitions
       else
