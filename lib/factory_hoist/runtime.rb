@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "digest"
+require_relative "database_snapshot"
 require_relative "deep_copy"
 require_relative "definition"
 require_relative "transaction"
@@ -66,7 +67,12 @@ module FactoryHoist
         savepoint = "factory_hoist_example_#{example.object_id}"
         @transaction.create_savepoint(savepoint)
         @examples_since_begin += 1
+        before = DatabaseSnapshot.call(@scopes) if FactoryHoist.configuration.paranoid_mode
         example.run
+        after = DatabaseSnapshot.call(@scopes) if before
+        if before && before != after
+          raise SharedDataMutationError, "paranoid_mode detected changes to hoisted database rows"
+        end
       ensure
         @transaction.rollback_savepoint(savepoint) if savepoint
       end

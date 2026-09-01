@@ -64,10 +64,11 @@ It uses FactoryBot's `attributes_for` and ActiveRecord's `insert_all!`; it is in
 FactoryHoist.configure do |config|
   config.subxid_budget = 60
   config.suite_seed = ENV.fetch("FACTORY_HOIST_SEED", 0).to_i
+  config.paranoid_mode = false
 end
 ```
 
-`subxid_budget` rebuilds an owned outer transaction after that many examples. Set it to `0` to disable rebuilding. `suite_seed` makes `FactoryHoist.random` deterministic for a declaration path and key.
+`subxid_budget` rebuilds an owned outer transaction after that many examples. Set it to `0` to disable rebuilding. `suite_seed` makes `FactoryHoist.random` deterministic for a declaration path and key. `paranoid_mode` checks hoisted ActiveRecord rows before and after every example and raises if they changed.
 
 ### Advice and statistics
 

@@ -77,3 +77,36 @@ RSpec.describe "FactoryHoist bulk writer" do
     expect(FactoryHoistUser.pluck(:name)).to eq(%w[bulk bulk])
   end
 end
+
+RSpec.describe FactoryHoist::DatabaseSnapshot do
+  it "changes when a hoisted database row changes" do
+    user = FactoryHoistUser.create!(name: "before")
+    scope = Struct.new(:values).new({user: user})
+    before = described_class.call([scope])
+
+    user.update!(name: "after")
+
+    expect(described_class.call([scope])).not_to eq(before)
+  ensure
+    user&.destroy!
+  end
+
+  it "makes paranoid sessions reject database mutations" do
+    FactoryHoist.reset!
+    FactoryHoist.configuration.paranoid_mode = true
+    session = FactoryHoist::Runtime::Session.new
+    group = Object.new
+    definition = FactoryHoist::Definition.new(
+      :user, :factory_hoist_user, [], {}, nil, "paranoid test"
+    )
+    session.enter(group, {user: definition})
+    example = Object.new
+    example.define_singleton_method(:run) { FactoryHoistUser.first.update!(name: "changed") }
+
+    expect { session.around_example(example) }
+      .to raise_error(FactoryHoist::SharedDataMutationError)
+  ensure
+    session&.leave(group) if group
+    FactoryHoist.configuration.paranoid_mode = false
+  end
+end

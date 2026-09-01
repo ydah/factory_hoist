@@ -10,6 +10,7 @@ module FactoryHoist
   class Error < StandardError; end
   class DuplicateHoistError < Error; end
   class FactoryUnavailableError < Error; end
+  class SharedDataMutationError < Error; end
 
   class << self
     attr_writer :configuration
