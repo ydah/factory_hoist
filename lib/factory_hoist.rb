@@ -1,5 +1,6 @@
 # frozen_string_literal: true
 
+require "factory_bot"
 require_relative "factory_hoist/configuration"
 require_relative "factory_hoist/runtime"
 require_relative "factory_hoist/stats"
@@ -46,6 +47,11 @@ module FactoryHoist
     def unsafe_bulk_insert(name, count, *traits, **attributes)
       require_relative "factory_hoist/bulk_writer"
       BulkWriter.call(name, count, traits, attributes)
+    end
+
+    def advise(*paths, io: $stdout)
+      require_relative "factory_hoist/advisor"
+      Advisor.new(paths.empty? ? ["spec"] : paths).print(io)
     end
 
     def stats

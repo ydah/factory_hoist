@@ -3,6 +3,7 @@
 require "digest"
 require_relative "deep_copy"
 require_relative "definition"
+require_relative "transaction"
 
 module FactoryHoist
   module Runtime
@@ -31,7 +32,10 @@ module FactoryHoist
       end
 
       def enter(group, definitions)
-        @transaction.begin_outer if @scopes.empty?
+        if @scopes.empty?
+          @transaction.begin_outer
+          @examples_since_begin = 0
+        end
         scope = Scope.new(group, definitions, @scopes)
         @transaction.create_savepoint(scope.savepoint)
         @scopes << scope
@@ -49,7 +53,10 @@ module FactoryHoist
         raise Error, "hoist scope mismatch" unless scope.group.equal?(group)
 
         @transaction.rollback_savepoint(scope.savepoint)
-        @transaction.rollback_outer if @scopes.empty?
+        if @scopes.empty?
+          @transaction.rollback_outer
+          @examples_since_begin = 0
+        end
       end
 
       def around_example(example)
@@ -164,13 +171,23 @@ module FactoryHoist
 
         definition = visible_definitions.fetch(name) { raise KeyError, "unknown hoist: #{name}" }
         FactoryHoist.stats.increment(:deoptimizations)
-        @local[name] = definition.materialize(MaterializationContext.new(@scopes, @scopes.last))
+        @local[name] = definition.materialize(ExampleMaterializationContext.new(self))
+      end
+
+      def defined?(name)
+        visible_definitions.key?(name)
       end
 
       private
 
       def copy_shared_values
-        DeepCopy.call(visible_values)
+        copyable = visible_values.select do |_name, value|
+          DeepCopy.call(value)
+          true
+        rescue TypeError
+          false
+        end
+        DeepCopy.call(copyable)
       rescue TypeError
         {}
       end
@@ -184,60 +201,23 @@ module FactoryHoist
       end
     end
 
-    class Transaction
-      def initialize
-        @connection = nil
-        @owned = false
-        @savepoints = []
+    class ExampleMaterializationContext
+      def initialize(values)
+        @values = values
       end
 
-      def begin_outer
-        @connection = active_record_connection
-        return unless @connection
-
-        @owned = !@connection.transaction_open?
-        @connection.begin_transaction(joinable: false) if @owned
+      def [](name)
+        @values.fetch(name)
       end
 
-      def create_savepoint(name)
-        return unless usable?
-
-        @connection.create_savepoint(name)
-        @savepoints << name
+      def method_missing(name, ...)
+        @values.fetch(name)
+      rescue KeyError
+        super
       end
 
-      def rollback_savepoint(name)
-        return unless usable? && @savepoints.include?(name)
-
-        @connection.rollback_to_savepoint(name)
-        @connection.release_savepoint(name)
-        @savepoints.delete(name)
-      end
-
-      def rollback_outer
-        return unless usable?
-
-        @connection.rollback_transaction if @owned
-        @savepoints.clear
-        @owned = false
-      end
-
-      def owned?
-        @owned
-      end
-
-      private
-
-      def usable?
-        @connection && @connection.transaction_open?
-      end
-
-      def active_record_connection
-        return unless defined?(::ActiveRecord::Base) && ::ActiveRecord::Base.connected?
-
-        ::ActiveRecord::Base.connection
-      rescue StandardError
-        nil
+      def respond_to_missing?(name, include_private = false)
+        @values.defined?(name) || super
       end
     end
   end

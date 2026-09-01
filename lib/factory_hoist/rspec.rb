@@ -1,5 +1,7 @@
 # frozen_string_literal: true
 
+require_relative "compatibility"
+
 module FactoryHoist
   module RSpecDSL
     def hoist(name, factory = name, *traits, **attributes, &block)
@@ -36,6 +38,7 @@ module FactoryHoist
 
   ::RSpec::Core::ExampleGroup.extend(RSpecDSL)
   ::RSpec.configure do |config|
+    config.before(:suite) { Compatibility.warn_for_database_cleaner }
     config.around(:each) { |example| Runtime.current.around_example(example) }
   end
 end

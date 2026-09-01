@@ -47,10 +47,10 @@ RSpec.describe FactoryHoist do
     )
   end
 
-  it "raises a useful error when no factory backend is available" do
+  it "uses FactoryBot as the default backend" do
     described_class.configuration.factory_adapter = nil
 
     expect { described_class.create(:user) }
-      .to raise_error(FactoryHoist::FactoryUnavailableError, /factory_adapter/)
+      .to raise_error(KeyError, /Factory not registered/)
   end
 end

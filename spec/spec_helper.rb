@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "factory_hoist"
+require "factory_hoist/advisor"
 
 RSpec.configure do |config|
   # Enable flags like --only-failures and --next-failure

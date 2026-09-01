@@ -47,19 +47,21 @@ end
 RSpec.describe "FactoryHoist deoptimization" do
   before(:context) do
     FactoryHoist.reset!
-    @counts = {created: 0}
+    @counts = Hash.new(0)
     counts = @counts
-    FactoryHoist.configuration.factory_adapter = lambda do |_strategy, _name, _traits, _attributes|
-      counts[:created] += 1
-      proc {}
+    FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, _attributes|
+      counts[name] += 1
+      name == :uncopyable ? proc {} : {name: name}
     end
   end
 
   hoist(:uncopyable)
+  hoist(:copyable)
 
-  it "falls back to example-local generation for uncopyable values" do
+  it "deoptimizes only the uncopyable value" do
     expect(uncopyable).to equal(uncopyable)
-    expect(@counts[:created]).to eq(2)
+    expect(copyable).to eq(name: :copyable)
+    expect(@counts).to include(uncopyable: 2, copyable: 1)
     expect(FactoryHoist.stats.to_h[:deoptimizations]).to eq(1)
   end
 end
