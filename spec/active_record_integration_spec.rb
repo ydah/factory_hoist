@@ -50,6 +50,10 @@ RSpec.describe "FactoryHoist ActiveRecord cleanup" do
 end
 
 RSpec.describe "FactoryHoist context hook isolation" do
+  before(:context) do
+    FactoryHoist.configuration.factory_adapter = nil
+    FactoryHoist.configuration.subxid_budget = 60
+  end
   before(:context) { FactoryHoistUser.create!(name: "context setup") }
 
   hoist(:user, :factory_hoist_user)

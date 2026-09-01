@@ -5,6 +5,7 @@ RSpec.describe "FactoryHoist RSpec integration" do
 
   before(:context) do
     FactoryHoist.stats.reset!
+    FactoryHoist.configuration.subxid_budget = 60
     @created = Hash.new(0)
     created = @created
     FactoryHoist.configure do |config|
@@ -47,6 +48,7 @@ end
 RSpec.describe "FactoryHoist deoptimization" do
   before(:context) do
     FactoryHoist.stats.reset!
+    FactoryHoist.configuration.subxid_budget = 60
     @counts = Hash.new(0)
     counts = @counts
     FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, _attributes|
@@ -69,6 +71,7 @@ end
 RSpec.describe "FactoryHoist lazy scheduling" do
   before(:context) do
     FactoryHoist.stats.reset!
+    FactoryHoist.configuration.subxid_budget = 60
     @created = Hash.new(0)
     created = @created
     FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, attributes|
@@ -98,6 +101,7 @@ end
 RSpec.describe "FactoryHoist dynamic reference fallback" do
   before(:context) do
     FactoryHoist.stats.reset!
+    FactoryHoist.configuration.subxid_budget = 60
     @created = Hash.new(0)
     created = @created
     FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, attributes|
