@@ -16,6 +16,12 @@ module FactoryHoist
       FactoryHoist.with_seed(seed) do
         FactoryHoist.create(factory, *traits, **attributes, **dynamic_attributes)
       end
+    rescue MaterializationError
+      raise
+    rescue StandardError => error
+      raise MaterializationError,
+        "#{node_path} hoist(:#{name}) failed: #{error.message}",
+        cause: error
     end
   end
 end

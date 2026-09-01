@@ -19,7 +19,11 @@ FactoryBot.define do
 end
 
 RSpec.describe "FactoryHoist with ActiveRecord" do
-  before(:context) { FactoryHoist.reset! }
+  before(:context) do
+    FactoryHoist.stats.reset!
+    FactoryHoist.configuration.factory_adapter = nil
+    FactoryHoist.configuration.subxid_budget = 60
+  end
 
   hoist(:user, :factory_hoist_user)
 
@@ -45,9 +49,27 @@ RSpec.describe "FactoryHoist ActiveRecord cleanup" do
   end
 end
 
+RSpec.describe "FactoryHoist context hook isolation" do
+  before(:context) { FactoryHoistUser.create!(name: "context setup") }
+
+  hoist(:user, :factory_hoist_user)
+
+  it "wraps existing context hooks in the group transaction" do
+    expect(user.name).to eq("original")
+    expect(FactoryHoistUser.count).to eq(2)
+  end
+end
+
+RSpec.describe "FactoryHoist context hook cleanup" do
+  it "rolls context hook writes back with hoisted rows" do
+    expect(FactoryHoistUser.count).to eq(0)
+  end
+end
+
 RSpec.describe "FactoryHoist subtransaction budget" do
   before(:context) do
-    FactoryHoist.reset!
+    FactoryHoist.stats.reset!
+    FactoryHoist.configuration.factory_adapter = nil
     FactoryHoist.configuration.subxid_budget = 1
   end
 

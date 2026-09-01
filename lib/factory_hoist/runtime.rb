@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "digest"
+require "openssl"
 require_relative "database_snapshot"
 require_relative "deep_copy"
 require_relative "definition"
@@ -22,7 +22,7 @@ module FactoryHoist
 
     def seed(node_path, key, index = 0)
       input = [FactoryHoist.configuration.suite_seed, node_path, key, index].join("\0")
-      Digest::SHA256.digest(input).unpack1("Q>")
+      OpenSSL::Digest.digest("BLAKE2b512", input).unpack1("Q>")
     end
 
     class Session
@@ -32,7 +32,7 @@ module FactoryHoist
         @examples_since_begin = 0
       end
 
-      def enter(group, definitions)
+      def enter(group, definitions, materialize: true)
         if @scopes.empty?
           @transaction.begin_outer
           @examples_since_begin = 0
@@ -40,12 +40,19 @@ module FactoryHoist
         scope = Scope.new(group, definitions, @scopes)
         @transaction.create_savepoint(scope.savepoint)
         @scopes << scope
-        scope.materialize!
+        scope.materialize! if materialize
       rescue Exception # rubocop:disable Lint/RescueException
         @scopes.pop if @scopes.last == scope
         @transaction.rollback_savepoint(scope.savepoint) if scope
         @transaction.rollback_outer if @scopes.empty?
         raise
+      end
+
+      def materialize(group)
+        scope = @scopes.last
+        raise Error, "hoist scope mismatch" unless scope&.group&.equal?(group)
+
+        scope.materialize!
       end
 
       def leave(group)
@@ -77,14 +84,14 @@ module FactoryHoist
         @transaction.rollback_savepoint(savepoint) if savepoint
       end
 
-      def fetch(example_instance, name)
+      def fetch(example_instance, name, fallback, definitions)
         FactoryHoist.stats.increment(:references)
         state = example_instance.instance_variable_get(:@__factory_hoist_values)
         unless state
-          state = ExampleValues.new(@scopes)
+          state = ExampleValues.new(@scopes, definitions)
           example_instance.instance_variable_set(:@__factory_hoist_values, state)
         end
-        state.fetch(name)
+        state.fetch(name, fallback)
       end
 
       private
@@ -165,23 +172,26 @@ module FactoryHoist
     end
 
     class ExampleValues
-      def initialize(scopes)
+      def initialize(scopes, definitions)
         @scopes = scopes.dup
+        @definitions = definitions
         @values = copy_shared_values
         @local = {}
       end
 
-      def fetch(name)
+      def fetch(name, fallback = nil)
         return @values.fetch(name) if @values.key?(name)
         return @local.fetch(name) if @local.key?(name)
 
-        definition = visible_definitions.fetch(name) { raise KeyError, "unknown hoist: #{name}" }
+        definition = @definitions[name] || fallback
+        raise KeyError, "unknown hoist: #{name}" unless definition
+
         FactoryHoist.stats.increment(:deoptimizations)
         @local[name] = definition.materialize(ExampleMaterializationContext.new(self))
       end
 
       def defined?(name)
-        visible_definitions.key?(name)
+        @definitions.key?(name)
       end
 
       private
@@ -202,9 +212,6 @@ module FactoryHoist
         @scopes.each_with_object({}) { |scope, values| values.merge!(scope.values) }
       end
 
-      def visible_definitions
-        @scopes.each_with_object({}) { |scope, definitions| definitions.merge!(scope.definitions) }
-      end
     end
 
     class ExampleMaterializationContext

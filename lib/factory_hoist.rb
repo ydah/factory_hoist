@@ -10,6 +10,7 @@ module FactoryHoist
   class Error < StandardError; end
   class DuplicateHoistError < Error; end
   class FactoryUnavailableError < Error; end
+  class MaterializationError < Error; end
   class SharedDataMutationError < Error; end
 
   class << self
@@ -66,8 +67,11 @@ module FactoryHoist
     def with_seed(seed)
       previous = Thread.current[:factory_hoist_random]
       Thread.current[:factory_hoist_random] = Random.new(seed)
+      previous_faker = ::Faker::Config.random if defined?(::Faker::Config)
+      ::Faker::Config.random = Thread.current[:factory_hoist_random] if defined?(::Faker::Config)
       yield
     ensure
+      ::Faker::Config.random = previous_faker if defined?(::Faker::Config)
       Thread.current[:factory_hoist_random] = previous
     end
 

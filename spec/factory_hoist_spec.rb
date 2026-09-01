@@ -47,6 +47,14 @@ RSpec.describe FactoryHoist do
     )
   end
 
+  it "reports the declaration node when materialization fails" do
+    described_class.configuration.factory_adapter = ->(*) { raise "database unavailable" }
+    definition = FactoryHoist::Definition.new(:user, :user, [], {}, nil, "orders paid")
+
+    expect { definition.materialize(Object.new) }
+      .to raise_error(FactoryHoist::MaterializationError, /orders paid hoist\(:user\).*database unavailable/)
+  end
+
   it "uses FactoryBot as the default backend" do
     described_class.configuration.factory_adapter = nil
 
