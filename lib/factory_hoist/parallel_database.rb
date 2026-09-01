@@ -13,25 +13,30 @@ module FactoryHoist
     end
 
     def clone_sqlite(source, target)
+      require "sqlite3"
+
       created = false
       complete = false
-      output = nil
-      File.open(source, "rb") do |file|
-        file.flock(File::LOCK_EX)
-        output = File.open(target, File::WRONLY | File::CREAT | File::EXCL, file.stat.mode)
-        created = true
-        output.binmode
-        IO.copy_stream(file, output)
-        output.flush
-        output.fsync
-        output.close
-        complete = true
+      mode = File.stat(source).mode & 0o777
+      File.open(target, File::WRONLY | File::CREAT | File::EXCL, 0o600).close
+      created = true
+      source_database = SQLite3::Database.new(source, readonly: true)
+      target_database = SQLite3::Database.new(target)
+      backup = SQLite3::Backup.new(target_database, "main", source_database, "main")
+      status = backup.step(-1)
+      unless status == SQLite3::Constants::ErrorCode::DONE
+        raise Error, "SQLite backup failed with status #{status}"
       end
+
+      File.chmod(mode, target)
+      complete = true
       target
     rescue Errno::EEXIST
       raise Error, "target database already exists: #{target}"
     ensure
-      output&.close unless output&.closed?
+      backup&.finish
+      target_database&.close
+      source_database&.close
       File.unlink(target) if created && !complete && File.exist?(target)
     end
     private_class_method :clone_sqlite

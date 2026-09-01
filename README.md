@@ -104,7 +104,7 @@ With a local PostgreSQL server available, verify the subtransaction budget, Post
 $ DATABASE_URL=postgresql:///postgres bundle exec ruby script/verify_postgresql
 ```
 
-Parallel workers can clone a disconnected PostgreSQL template under an advisory lock, or a closed SQLite file under a file lock:
+Parallel workers can clone a disconnected PostgreSQL template under an advisory lock, or a SQLite database through SQLite's online backup API:
 
 ```ruby
 FactoryHoist.clone_database(
