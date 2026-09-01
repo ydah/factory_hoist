@@ -1,7 +1,9 @@
 # frozen_string_literal: true
 
 require "factory_bot"
+require "minitest"
 require "monitor"
+require "rspec/core"
 require_relative "factory_hoist/configuration"
 require_relative "factory_hoist/pcg32"
 require_relative "factory_hoist/runtime"
@@ -137,5 +139,5 @@ module FactoryHoist
   end
 end
 
-require_relative "factory_hoist/rspec" if defined?(::RSpec)
-require_relative "factory_hoist/minitest" if defined?(::Minitest::Test)
+require_relative "factory_hoist/rspec"
+require_relative "factory_hoist/minitest"

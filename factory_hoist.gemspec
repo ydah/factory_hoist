@@ -28,10 +28,10 @@ Gem::Specification.new do |spec|
   spec.require_paths = ["lib"]
 
   spec.add_dependency "factory_bot", ">= 6.5", "< 7"
+  spec.add_dependency "minitest", ">= 5", "< 7"
   spec.add_dependency "rspec-core", ">= 3.12", "< 4"
   spec.add_development_dependency "activerecord", ">= 7.1", "< 9"
   spec.add_development_dependency "faker", ">= 3", "< 4"
-  spec.add_development_dependency "minitest", ">= 5", "< 7"
   spec.add_development_dependency "pg", ">= 1.5", "< 2"
   spec.add_development_dependency "sqlite3", ">= 1.7", "< 3"
 end

@@ -12,9 +12,16 @@ module FactoryHoist
       return if records.empty?
 
       rows = records.map do |record|
-        primary_key = record.class.primary_key
         model = record.class.name || "table:#{record.class.table_name}"
-        [model, record.id, record.class.unscoped.find_by(primary_key => record.id)&.attributes]
+        primary_keys = Array(record.class.primary_key)
+        if primary_keys.empty?
+          identity = record.attributes
+          current = [identity, record.class.unscoped.where(identity).count]
+        else
+          identity = primary_keys.zip(Array(record.id)).to_h
+          current = record.class.unscoped.find_by(identity)&.attributes
+        end
+        [model, record.id || identity, current]
       end.sort_by { |model, id, _attributes| [model, id.to_s] }
       Digest::SHA256.hexdigest(Marshal.dump(rows))
     end

@@ -59,7 +59,7 @@ module FactoryHoist
       end
 
       def active_record_connection
-        return unless defined?(::ActiveRecord::Base) && ::ActiveRecord::Base.connected?
+        return unless defined?(::ActiveRecord::Base)
 
         ::ActiveRecord::Base.connection
       rescue StandardError

@@ -8,9 +8,18 @@ ActiveRecord::Schema.define do
   create_table :factory_hoist_users, force: true do |table|
     table.string :name, null: false
   end
+  create_table :factory_hoist_memberships, id: false, force: true do |table|
+    table.integer :account_id, null: false
+    table.integer :user_id, null: false
+    table.string :role, null: false
+  end
 end
 
 class FactoryHoistUser < ActiveRecord::Base
+end
+
+class FactoryHoistMembership < ActiveRecord::Base
+  self.primary_key = %i[account_id user_id]
 end
 
 FactoryBot.define do
@@ -172,6 +181,35 @@ RSpec.describe FactoryHoist::DatabaseSnapshot do
     expect(described_class.call([scope])).to match(/\A[0-9a-f]{64}\z/)
   ensure
     FactoryHoistUser.where(id: [named_record&.id, anonymous_record&.id]).delete_all
+  end
+
+  it "snapshots composite primary keys" do
+    membership = FactoryHoistMembership.create!(account_id: 1, user_id: 2, role: "owner")
+    scope = Struct.new(:values).new({membership: membership})
+    before = described_class.call([scope])
+
+    membership.update!(role: "member")
+
+    expect(described_class.call([scope])).not_to eq(before)
+  ensure
+    FactoryHoistMembership.delete_all
+  end
+
+  it "snapshots the selected row when a model has no primary key" do
+    model = Class.new(ActiveRecord::Base) do
+      self.table_name = "factory_hoist_memberships"
+      self.primary_key = nil
+    end
+    model.create!(account_id: 1, user_id: 1, role: "unrelated")
+    membership = model.create!(account_id: 2, user_id: 2, role: "owner")
+    scope = Struct.new(:values).new({membership: membership})
+    before = described_class.call([scope])
+
+    model.where(account_id: 2, user_id: 2).update_all(role: "member")
+
+    expect(described_class.call([scope])).not_to eq(before)
+  ensure
+    model&.delete_all
   end
 end
 
