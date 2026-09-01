@@ -38,14 +38,29 @@ RSpec.describe FactoryHoist do
     expect(seed).not_to eq(FactoryHoist::Runtime.seed("orders refunded", :order))
   end
 
+  it "uses a deterministic PCG random stream" do
+    canonical = FactoryHoist::PCG32.new(42, 54)
+    expect(Array.new(3) { canonical.rand(1 << 32) }).to eq(
+      [2_707_161_783, 2_068_313_097, 3_122_475_824]
+    )
+    first = FactoryHoist::PCG32.new(123)
+
+    expect(first.rand(3..5)).to be_between(3, 5)
+    expect(first.bytes(4).bytesize).to eq(4)
+    expect { first.rand(5...5) }.to raise_error(ArgumentError)
+    expect { first.rand((1 << 32) + 1) }.to raise_error(ArgumentError)
+  end
+
   it "reports factory usage statistics" do
     described_class.stats.increment(:references, 2)
     described_class.stats.increment(:deoptimizations)
+    described_class.stats.record_reference("orders user")
 
     expect(described_class.stats.to_h).to include(
       references: 2,
       deoptimizations: 1,
-      degradation_rate: 0.5
+      degradation_rate: 0.5,
+      reference_counts: {"orders user" => 1}
     )
   end
 

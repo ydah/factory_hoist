@@ -2,6 +2,7 @@
 
 require "factory_bot"
 require_relative "factory_hoist/configuration"
+require_relative "factory_hoist/pcg32"
 require_relative "factory_hoist/runtime"
 require_relative "factory_hoist/stats"
 require_relative "factory_hoist/version"
@@ -60,6 +61,11 @@ module FactoryHoist
       BulkWriter.call(name, count, traits, attributes)
     end
 
+    def clone_database(source:, target:, adapter:)
+      require_relative "factory_hoist/parallel_database"
+      ParallelDatabase.clone(source: source, target: target, adapter: adapter)
+    end
+
     def advise(*paths, io: $stdout)
       require_relative "factory_hoist/advisor"
       Advisor.new(paths.empty? ? ["spec"] : paths).print(io)
@@ -70,12 +76,12 @@ module FactoryHoist
     end
 
     def random
-      Thread.current[:factory_hoist_random] ||= Random.new(configuration.suite_seed)
+      Thread.current[:factory_hoist_random] ||= PCG32.new(configuration.suite_seed)
     end
 
     def with_seed(seed)
       previous = Thread.current[:factory_hoist_random]
-      Thread.current[:factory_hoist_random] = Random.new(seed)
+      Thread.current[:factory_hoist_random] = PCG32.new(seed)
       faker_config = ::Faker::Config if defined?(::Faker::Config)
       previous_faker = faker_config.random if faker_config
       faker_config.random = Thread.current[:factory_hoist_random] if faker_config

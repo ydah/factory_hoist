@@ -86,6 +86,7 @@ module FactoryHoist
 
       def fetch(example_instance, name, fallback, definitions)
         FactoryHoist.stats.increment(:references)
+        FactoryHoist.stats.record_reference("#{fallback.node_path} #{name}")
         state = example_instance.instance_variable_get(:@__factory_hoist_values)
         unless state
           state = ExampleValues.new(@scopes, definitions)

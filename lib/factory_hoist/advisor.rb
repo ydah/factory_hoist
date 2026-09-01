@@ -60,6 +60,8 @@ module FactoryHoist
       stats[:materialization_costs].first(20).each do |key, seconds|
         io.puts format("  %.3fs %s", seconds, key)
       end
+      unused = stats[:materialization_costs].keys - stats[:reference_counts].keys
+      unused.each { |key| io.puts "  unused at runtime: #{key}" }
     end
   end
 end

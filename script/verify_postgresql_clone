@@ -1,0 +1,37 @@
+#!/usr/bin/env ruby
+# frozen_string_literal: true
+
+require "bundler/setup"
+require "pg"
+require "factory_hoist"
+
+suffix = "#{Process.pid}_#{Time.now.to_i}"
+source = "factory_hoist_source_#{suffix}"
+target = "factory_hoist_worker_#{suffix}"
+begin
+  admin = PG.connect(dbname: "postgres")
+  admin.exec("CREATE DATABASE #{admin.quote_ident(source)}")
+  seed = PG.connect(dbname: source)
+  seed.exec("CREATE TABLE proof(value text NOT NULL)")
+  seed.exec("INSERT INTO proof VALUES ('cloned')")
+  seed.close
+
+  FactoryHoist.clone_database(
+    source: "postgresql:///#{source}",
+    target: target,
+    adapter: :postgresql
+  )
+  worker = PG.connect(dbname: target)
+  raise "template data missing" unless worker.exec("SELECT value FROM proof").getvalue(0, 0) == "cloned"
+  worker.close
+
+  puts "PostgreSQL template clone verified: #{source} -> #{target}"
+ensure
+  worker&.close unless worker&.finished?
+  seed&.close unless seed&.finished?
+  if admin
+    admin.exec("DROP DATABASE IF EXISTS #{admin.quote_ident(target)} WITH (FORCE)") if target
+    admin.exec("DROP DATABASE IF EXISTS #{admin.quote_ident(source)} WITH (FORCE)") if source
+    admin.close
+  end
+end

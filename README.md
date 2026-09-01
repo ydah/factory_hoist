@@ -82,7 +82,7 @@ end
 $ bundle exec factory_hoist advise spec/
 ```
 
-The command reports repeated literal factory calls and declarations that appear unused. Runtime counters and materialization costs are available through `FactoryHoist.stats.to_h`.
+The command runs the selected RSpec suite, then reports repeated literal factory calls, runtime references, degradation, and the 20 most expensive materializations. Runtime counters remain available through `FactoryHoist.stats.to_h`.
 
 ## Constraints
 
@@ -101,6 +101,16 @@ With a local PostgreSQL server available, verify the subtransaction budget using
 
 ```console
 $ DATABASE_URL=postgresql:///postgres bundle exec ruby script/verify_postgresql
+```
+
+Parallel workers can clone a disconnected PostgreSQL template under an advisory lock, or a closed SQLite file under a file lock:
+
+```ruby
+FactoryHoist.clone_database(
+  source: "postgresql:///app_test_template",
+  target: "app_test_1",
+  adapter: :postgresql
+)
 ```
 
 The design-to-implementation adversarial review is recorded in [docs/adversarial-audit.md](docs/adversarial-audit.md).

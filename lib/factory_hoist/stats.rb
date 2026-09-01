@@ -19,10 +19,15 @@ module FactoryHoist
       @mutex.synchronize { @costs[key.to_s] += seconds }
     end
 
+    def record_reference(key)
+      @mutex.synchronize { @references[key.to_s] += 1 }
+    end
+
     def to_h
       @mutex.synchronize do
         @counters.merge(
           degradation_rate: degradation_rate,
+          reference_counts: @references.sort.to_h,
           materialization_costs: @costs.sort_by { |_, seconds| -seconds }.to_h
         )
       end
@@ -32,6 +37,7 @@ module FactoryHoist
       @mutex.synchronize do
         @counters = COUNTERS.to_h { |counter| [counter, 0] }
         @costs = Hash.new(0.0)
+        @references = Hash.new(0)
       end
     end
 

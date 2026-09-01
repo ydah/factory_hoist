@@ -12,6 +12,7 @@ Audited against `.idea/factory_hoist-design.md` on 2026-09-01.
 | PostgreSQL subxid budget | PostgreSQL 14: 61 writes, one outer transaction rebuild, zero added `Subtrans` reads, zero leaked rows |
 | Lazy graph copy with relationship identity and per-example memoization | RSpec integration tests |
 | Deterministic node/key seed | BLAKE2b-based seed test; Faker random source is scoped when Faker is loaded |
+| PCG random source | Canonical PCG32 vector and range/bytes tests |
 | Failure locality | Materialization errors include the declaration node and key |
 | FactoryBot build/create/list compatibility | Unit and ActiveRecord integration tests |
 | Fast Build | Generated Ruby file, runtime constant resolution after reload, conservative fallback; fixed benchmark above 5x |
@@ -19,6 +20,8 @@ Audited against `.idea/factory_hoist-design.md` on 2026-09-01.
 | DatabaseCleaner warning and paranoid row checks | Unit and ActiveRecord integration tests |
 | RSpec and Minitest correctness | RSpec sharing; Minitest deliberately deoptimizes to per-test creation |
 | Packaging and CLI | Gem build and packaged executable checks |
+| Process-parallel database initialization | SQLite locked file clone and PostgreSQL advisory-locked template clone; PostgreSQL verified against a temporary source/worker pair |
+| Phase 0 harness | Reproducible synthetic three-way benchmark in `docs/phase0-synthetic.md` |
 
 ## Not claimable from this repository
 
@@ -28,13 +31,17 @@ These are empirical acceptance gates, not library code:
 - Comparison against mechanically applied `let_it_be` plus `build_stubbed`, representative single-file timings, RSS, and three-run suite medians require that same suite.
 - MySQL behavior cannot be verified because no MySQL server is available in this environment.
 
-## Deliberate conditional omissions
+## Contradictions in the design
 
-- Process-parallel PostgreSQL template cloning is not shipped without a concrete worker/database lifecycle; guessing connection termination policy would risk data loss.
-- Circular-FK bulk insertion is not generalized without a real schema. The design makes Bulk Writer conditional on Phase 0 showing persistence dominance.
+- G2/G4 require no migration and an unchanged suite, while §3.2 requires explicit `hoist` declarations and §4.1 requires mechanical replacement. Both cannot be true simultaneously.
+- `ActiveRecord::Base.instantiate` creates an object treated as persisted, which does not preserve FactoryBot `build` semantics for a row that does not exist. Fast Build uses `new` and real model instances instead.
+- Generic circular-FK `INSERT + UPDATE` is impossible when both foreign keys are immediately enforced and non-null. It requires nullable/deferred constraints or preallocated keys, none of which the API or design specifies.
+
+## Deliberate safe degradation
+
 - Minitest cross-test sharing is disabled because the design leaves its portable group tree/lifecycle unresolved. The compatibility path remains correct and reports deoptimization.
 - Static reference analysis uses MRI bytecode. Dynamic or indirect calls take the correct local fallback; non-MRI runtimes conservatively schedule at the declaration boundary.
 
 ## Verdict
 
-The repository is implementation-complete for the testable, safe core and exposes runnable checks for SQLite, PostgreSQL, and Fast Build. Product-level completion remains blocked on the design's mandatory Phase 0 target-suite measurements; claiming G1/G2 or the project stop/go decision without that input would be false.
+The repository is implementation-complete for the coherent, testable subset and exposes runnable checks for SQLite, PostgreSQL, database cloning, Phase 0, and Fast Build. The design as written cannot be completely satisfied because of the contradictions above. Product-level completion also remains blocked on the mandatory target-suite measurements; claiming G1/G2 or the project stop/go decision without that input would be false.

@@ -1,11 +1,15 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require "factory_hoist"
-
 unless ARGV.shift == "advise"
   warn "Usage: factory_hoist advise [SPEC_PATH ...]"
   exit 1
 end
 
-FactoryHoist.advise(*ARGV)
+require "rspec/core"
+require "factory_hoist"
+
+paths = ARGV.empty? ? ["spec"] : ARGV
+status = RSpec::Core::Runner.run(paths)
+FactoryHoist.advise(*paths)
+exit status
