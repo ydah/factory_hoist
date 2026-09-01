@@ -24,5 +24,12 @@ RSpec.describe FactoryHoist::ParallelDatabase do
   it "rejects adapters without a safe clone primitive" do
     expect { described_class.clone(source: "a", target: "b", adapter: :mysql) }
       .to raise_error(ArgumentError, /unsupported/)
+    expect { described_class.clone(source: "a", target: "b", adapter: nil) }
+      .to raise_error(ArgumentError, /unsupported/)
+  end
+
+  it "rejects PostgreSQL names that would be truncated" do
+    expect { described_class.clone(source: "postgresql:///postgres", target: "a" * 64, adapter: :postgresql) }
+      .to raise_error(ArgumentError, /invalid target/)
   end
 end

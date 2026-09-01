@@ -18,8 +18,6 @@ module FactoryHoist
         cached = @compiled[name.to_sym]
         evaluator = cached ? cached[:evaluator] : compile(name)
         evaluator ? evaluator.new(overrides).build : FALLBACK
-      rescue KeyError, NameError
-        FALLBACK
       end
 
       def compile(name)
@@ -45,6 +43,8 @@ module FactoryHoist
           require path
           @compiled.fetch(name.to_sym).fetch(:evaluator)
         end
+      rescue KeyError, NameError
+        nil
       end
 
       def install(token, &builder)
@@ -130,10 +130,12 @@ module FactoryHoist
         klass = factory.build_class
         assigned = attributes.reject(&:ignored).map(&:name)
         names = attributes.map(&:name)
+        reserved = Evaluator.instance_methods(true) | Evaluator.private_instance_methods(true) | [:build]
         required_arguments = klass.instance_method(:initialize).parameters.any? do |type, _name|
           %i[req keyreq].include?(type)
         end
-        return if required_arguments || !klass.name || names.any? { |name| !name.match?(/\A[a-z_]\w*\z/i) }
+        invalid_name = names.any? { |name| !name.match?(/\A[a-z_]\w*\z/i) || reserved.include?(name) }
+        return if required_arguments || !klass.name || invalid_name
 
         {
           name: factory.name,
@@ -160,18 +162,25 @@ module FactoryHoist
       attr_reader :instance
 
       def association(name, *traits_and_overrides)
-        overrides = traits_and_overrides.last.is_a?(Hash) ? traits_and_overrides.pop : {}
-        FactoryHoist.build(name, *traits_and_overrides, **overrides)
+        overrides = traits_and_overrides.last.is_a?(Hash) ? traits_and_overrides.pop.dup : {}
+        strategy = overrides.delete(:strategy)
+        strategy ||= ::FactoryBot.use_parent_strategy ? :build : :create
+        if %i[build create].include?(strategy)
+          return FactoryHoist.public_send(strategy, name, *traits_and_overrides, **overrides)
+        end
+
+        ::FactoryBot.public_send(strategy, name, *traits_and_overrides, **overrides)
       end
 
       def method_missing(name, ...)
-        return ::FactoryBot.public_send(name, ...) if ::FactoryBot.respond_to?(name)
+        return @instance.send(name, ...) if @instance.respond_to?(name)
+        return ::FactoryBot::SyntaxRunner.new.send(name, ...) if ::FactoryBot::SyntaxRunner.new.respond_to?(name)
 
         super
       end
 
       def respond_to_missing?(name, include_private = false)
-        ::FactoryBot.respond_to?(name) || super
+        @instance.respond_to?(name) || ::FactoryBot::SyntaxRunner.new.respond_to?(name) || super
       end
 
       private

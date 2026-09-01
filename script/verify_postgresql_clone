@@ -14,6 +14,18 @@ begin
   seed = PG.connect(dbname: source)
   seed.exec("CREATE TABLE proof(value text NOT NULL)")
   seed.exec("INSERT INTO proof VALUES ('cloned')")
+
+  begin
+    FactoryHoist.clone_database(
+      source: "postgresql:///#{source}",
+      target: target,
+      adapter: :postgresql
+    )
+  rescue FactoryHoist::Error => error
+    raise unless error.message.include?("active connection")
+  else
+    raise "clone accepted an active source connection"
+  end
   seed.close
 
   FactoryHoist.clone_database(
@@ -25,7 +37,19 @@ begin
   raise "template data missing" unless worker.exec("SELECT value FROM proof").getvalue(0, 0) == "cloned"
   worker.close
 
-  puts "PostgreSQL template clone verified: #{source} -> #{target}"
+  begin
+    FactoryHoist.clone_database(
+      source: "postgresql:///#{source}",
+      target: target,
+      adapter: :postgresql
+    )
+  rescue FactoryHoist::Error => error
+    raise unless error.message.include?("already exists")
+  else
+    raise "clone overwrote an existing target"
+  end
+
+  puts "PostgreSQL template clone and refusal paths verified: #{source} -> #{target}"
 ensure
   worker&.close unless worker&.finished?
   seed&.close unless seed&.finished?

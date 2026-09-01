@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require "active_record"
+require "factory_hoist/bulk_writer"
 
 ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
 ActiveRecord::Schema.define do
@@ -114,6 +115,16 @@ RSpec.describe "FactoryHoist bulk writer" do
     end
 
     expect(FactoryHoistUser.pluck(:name)).to eq(["transaction remains usable"])
+  end
+
+  it "keeps the original failure when row diagnosis is unavailable" do
+    unavailable = Class.new do
+      def self.transaction(...)
+        raise "diagnosis unavailable"
+      end
+    end
+
+    expect(FactoryHoist::BulkWriter.send(:failing_row, unavailable, [{}])).to be_nil
   end
 end
 

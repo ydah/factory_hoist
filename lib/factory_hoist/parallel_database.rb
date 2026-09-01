@@ -5,7 +5,7 @@ module FactoryHoist
     module_function
 
     def clone(source:, target:, adapter:)
-      case adapter.to_sym
+      case adapter.respond_to?(:to_sym) && adapter.to_sym
       when :postgresql then clone_postgresql(source, target)
       when :sqlite then clone_sqlite(source, target)
       else raise ArgumentError, "parallel database cloning is unsupported for #{adapter}"
@@ -38,7 +38,8 @@ module FactoryHoist
 
     def clone_postgresql(source_url, target)
       require "pg"
-      raise ArgumentError, "invalid target database name" unless target.match?(/\A[a-zA-Z0-9_]+\z/)
+      valid_target = target.is_a?(String) && target.bytesize <= 63 && target.match?(/\A[a-zA-Z0-9_]+\z/)
+      raise ArgumentError, "invalid target database name" unless valid_target
 
       source_connection = PG.connect(source_url)
       parameters = source_connection.conninfo_hash.transform_keys(&:to_sym)

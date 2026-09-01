@@ -36,6 +36,8 @@ module FactoryHoist
         raise ::ActiveRecord::Rollback
       end
       failed
+    rescue StandardError
+      nil
     end
     private_class_method :failing_row
   end

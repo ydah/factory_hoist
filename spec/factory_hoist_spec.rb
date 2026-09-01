@@ -134,6 +134,10 @@ end
 
 class FastBuildUser
   attr_accessor :first_name, :last_name, :email
+
+  def model_prefix
+    "model"
+  end
 end
 
 class ReloadableFastBuildRecord
@@ -148,11 +152,27 @@ class RequiredConstructorRecord
   end
 end
 
+class FastBuildChild
+  attr_accessor :persisted
+end
+
+class FastBuildParent
+  attr_accessor :child
+end
+
+class ReservedFastBuildRecord
+  attr_accessor :build
+end
+
 FactoryBot.define do
   factory :fast_build_user do
     first_name { "Ada" }
     last_name { "Lovelace" }
     email { "#{first_name.downcase}.#{last_name.downcase}@example.test" }
+  end
+
+  factory :model_method_fast_build_user, class: FastBuildUser do
+    first_name { model_prefix }
   end
 
   factory :callback_fast_build_user, class: FastBuildUser do
@@ -171,6 +191,22 @@ FactoryBot.define do
 
   factory :broken_fast_build_user, class: FastBuildUser do
     first_name { raise "compiled attribute failure" }
+  end
+
+  sequence(:fast_build_failure_probe)
+  factory :name_error_fast_build_user, class: FastBuildUser do
+    first_name { generate(:fast_build_failure_probe) }
+    last_name { MissingFastBuildConstant }
+  end
+
+  factory :fast_build_child do
+    to_create { |child| child.persisted = true }
+  end
+  factory :fast_build_parent do
+    association :child, factory: :fast_build_child
+  end
+  factory :reserved_fast_build_record do
+    build { "attribute value" }
   end
 end
 
@@ -209,5 +245,30 @@ RSpec.describe FactoryHoist::FastBuild do
     expect { FactoryHoist.build(:broken_fast_build_user) }.to raise_error do |error|
       expect(error.backtrace).to include(a_string_including("/factory_hoist/broken_fast_build_user_"))
     end
+  end
+
+  it "evaluates model instance methods like FactoryBot" do
+    expect(FactoryHoist.build(:model_method_fast_build_user).first_name).to eq("model")
+  end
+
+  it "does not retry evaluator NameErrors through FactoryBot" do
+    FactoryBot.rewind_sequence(:fast_build_failure_probe)
+
+    expect { FactoryHoist.build(:name_error_fast_build_user) }.to raise_error(NameError)
+    expect(FactoryBot.generate(:fast_build_failure_probe)).to eq(2)
+  end
+
+  it "honors FactoryBot association strategy configuration" do
+    previous = FactoryBot.use_parent_strategy
+    FactoryBot.use_parent_strategy = false
+
+    expect(FactoryHoist.build(:fast_build_parent).child.persisted).to be(true)
+  ensure
+    FactoryBot.use_parent_strategy = previous
+  end
+
+  it "falls back when an attribute conflicts with evaluator methods" do
+    expect(FactoryHoist.build(:reserved_fast_build_record).build).to eq("attribute value")
+    expect(described_class.compiled_source(:reserved_fast_build_record)).to be_nil
   end
 end
