@@ -7,24 +7,200 @@ ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:"
 ActiveRecord::Schema.define do
   create_table :factory_hoist_users, force: true do |table|
     table.string :name, null: false
+    table.datetime :last_seen_at
   end
   create_table :factory_hoist_memberships, id: false, force: true do |table|
     table.integer :account_id, null: false
     table.integer :user_id, null: false
     table.string :role, null: false
   end
+  create_table :factory_hoist_documents, force: true do |table|
+    table.json :payload
+  end
+  create_table :factory_hoist_preferences, force: true do |table|
+    table.text :payload
+  end
 end
 
 class FactoryHoistUser < ActiveRecord::Base
+  has_many :memberships, class_name: "FactoryHoistMembership", foreign_key: :user_id, inverse_of: :user
 end
 
 class FactoryHoistMembership < ActiveRecord::Base
   self.primary_key = %i[account_id user_id]
+  belongs_to :user, class_name: "FactoryHoistUser", inverse_of: :memberships
+end
+
+class FactoryHoistDocument < ActiveRecord::Base
+end
+
+class FactoryHoistPreference < ActiveRecord::Base
+  serialize :payload, coder: JSON
+end
+
+class FactoryHoistCallbackUser < FactoryHoistUser
+  after_initialize { @initialized_by_callback = true }
 end
 
 FactoryBot.define do
   factory :factory_hoist_user do
     name { "original" }
+  end
+end
+
+RSpec.describe FactoryHoist::DeepCopy do
+  after do
+    FactoryHoistDocument.delete_all
+    FactoryHoistPreference.delete_all
+  end
+
+  it "dumps a snapshot once and only loads it for each example" do
+    value = {nested: [1]}
+    allow(Marshal).to receive(:dump).and_call_original
+
+    snapshot = described_class.snapshot(value: value)
+    snapshot.call
+    snapshot.call
+
+    expect(Marshal).to have_received(:dump).once
+  end
+
+  it "falls back for compound mutable attributes and keeps them isolated" do
+    [
+      FactoryHoistDocument.create!(payload: {"items" => [1]}),
+      FactoryHoistPreference.create!(payload: {"items" => [1]})
+    ].each do |record|
+      record.payload
+      snapshot = described_class.snapshot(record: record)
+      first = snapshot.call.fetch(:record)
+      second = snapshot.call.fetch(:record)
+      first.payload["items"] << 2
+
+      expect(snapshot).to be_a(described_class::Snapshot)
+      expect(second.payload).to eq("items" => [1])
+      expect(record.payload).to eq("items" => [1])
+    end
+  end
+
+  it "falls back when an ActiveRecord replay cannot be validated" do
+    plan = Object.new
+    plan.define_singleton_method(:call) { raise "unsupported replay" }
+    allow(FactoryHoist::RecordCopy).to receive(:plan).and_return(plan)
+
+    snapshot = described_class.snapshot(value: {nested: [1]})
+
+    expect(snapshot.call).to eq(value: {nested: [1]})
+  end
+end
+
+RSpec.describe FactoryHoist::RecordCopy do
+  after do
+    FactoryHoistMembership.delete_all
+    FactoryHoistUser.delete_all
+  end
+
+  it "replays associations and callback ivars without sharing state" do
+    user = FactoryHoistUser.create!(name: "graph", last_seen_at: Time.now)
+    membership = user.memberships.create!(account_id: 1, role: "owner")
+    user.memberships.load
+    membership.user
+    flag = {"items" => [1]}
+    user.instance_variable_set(:@factory_flag, flag)
+    membership.instance_variable_set(:@factory_flag, flag)
+    snapshot = described_class.plan(user: user, membership: membership)
+
+    first = snapshot.call
+    second = snapshot.call
+    first.fetch(:user).instance_variable_get(:@factory_flag)["items"] << 2
+
+    expect(first.fetch(:user).memberships.first).to equal(first.fetch(:membership))
+    expect(first.fetch(:membership).user).to equal(first.fetch(:user))
+    expect(first.fetch(:user).instance_variable_get(:@factory_flag))
+      .to equal(first.fetch(:membership).instance_variable_get(:@factory_flag))
+    expect(second.fetch(:user).instance_variable_get(:@factory_flag)).to eq("items" => [1])
+    expect(user.instance_variable_get(:@factory_flag)).to eq("items" => [1])
+  end
+
+  it "preserves dirty tracking without sharing previous changes" do
+    user = FactoryHoistUser.create!(name: "before")
+    original_changes = user.previous_changes
+    user.name = "after"
+    expect(user.association_cached?(:memberships)).to be(false)
+    snapshot = described_class.plan(user: user)
+    expect(user.association_cached?(:memberships)).to be(false)
+
+    first = snapshot.call.fetch(:user)
+    second = snapshot.call.fetch(:user)
+    first.previous_changes.fetch("name").last << " changed"
+
+    expect(first.changes).to eq("name" => ["before", "after"])
+    expect(second.previous_changes).to eq(original_changes)
+    expect(user.previous_changes).to eq(original_changes)
+  end
+
+  it "preserves a built association target before the collection is loaded" do
+    user = FactoryHoistUser.create!(name: "pending association")
+    FactoryHoistMembership.create!(user: user, account_id: 1, role: "persisted")
+    membership = user.memberships.build(account_id: 2, role: "built")
+    expect(user.association(:memberships)).not_to be_loaded
+
+    copy = described_class.plan(user: user, membership: membership).call
+    copied_user = copy.fetch(:user)
+
+    expect(copied_user.association(:memberships).target.first).to equal(copy.fetch(:membership))
+    expect(copied_user.association(:memberships)).not_to be_loaded
+    expect(copied_user.memberships.map(&:role)).to contain_exactly("persisted", "built")
+  end
+
+  it "rejects record states and ivars it cannot faithfully replay" do
+    record = FactoryHoistUser.create!(name: "destroyed")
+    record.destroy!
+    user = FactoryHoistUser.create!(name: "linked ivar")
+    membership = user.memberships.create!(account_id: 1, role: "owner")
+    user.instance_variable_set(:@callback_link, {record: membership})
+    aliased = FactoryHoistUser.create!(name: "aliased ivar")
+    aliased.instance_variable_set(:@callback_flag, aliased.name)
+    decorated = FactoryHoistUser.new(name: "decorated")
+    decorated.define_singleton_method(:decorated?) { true }
+    invalid = FactoryHoistUser.new
+    invalid.errors.add(:name, "invalid")
+    callback_record = FactoryHoistCallbackUser.new(name: "callback")
+
+    expect(described_class.plan(record: record)).to be_nil
+    expect(described_class.plan(user: user, membership: membership)).to be_nil
+    expect(described_class.plan(record: aliased)).to be_nil
+    expect(described_class.plan(record: decorated)).to be_nil
+    expect(described_class.plan(record: invalid)).to be_nil
+    expect(described_class.plan(record: callback_record)).to be_nil
+  end
+end
+
+RSpec.describe FactoryHoist::Runtime::Session do
+  it "reuses snapshots until the visible scopes change" do
+    previous_adapter = FactoryHoist.configuration.factory_adapter
+    FactoryHoist.configuration.factory_adapter = lambda do |_strategy, name, _traits, _attributes|
+      {factory: name}
+    end
+    outer = Object.new
+    inner = Object.new
+    outer_definition = FactoryHoist::Definition.new(:value, :outer, [], {}, nil, "outer")
+    inner_definition = FactoryHoist::Definition.new(:value, :inner, [], {}, nil, "inner")
+    session = described_class.new
+    allow(FactoryHoist::DeepCopy).to receive(:snapshot).and_call_original
+
+    session.enter(outer, {value: outer_definition})
+    2.times { session.fetch(Object.new, :value, nil, value: outer_definition) }
+    session.enter(inner, {value: inner_definition})
+    nested = session.fetch(Object.new, :value, nil, value: inner_definition)
+    session.leave(inner)
+    restored = session.fetch(Object.new, :value, nil, value: outer_definition)
+
+    expect(nested).to eq(factory: :inner)
+    expect(restored).to eq(factory: :outer)
+    expect(FactoryHoist::DeepCopy).to have_received(:snapshot).exactly(3).times
+  ensure
+    session&.close
+    FactoryHoist.configuration.factory_adapter = previous_adapter
   end
 end
 

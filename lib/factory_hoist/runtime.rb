@@ -42,6 +42,7 @@ module FactoryHoist
         scope = Scope.new(group, definitions, @scopes)
         @transaction.create_savepoint(scope.savepoint)
         @scopes << scope
+        invalidate_snapshot!
         scope.materialize! if materialize
         @transaction.clear_written! if materialize && @transaction.owned?
       rescue Exception # rubocop:disable Lint/RescueException
@@ -57,10 +58,12 @@ module FactoryHoist
 
         preserve_unmanaged_writes
         @transaction.create_savepoint(scope.savepoint)
+        invalidate_snapshot!
         scope.materialize!
       rescue Exception # rubocop:disable Lint/RescueException
         @transaction.rollback_savepoint(scope.savepoint) if scope
         scope&.values&.clear
+        invalidate_snapshot!
         raise
       ensure
         @transaction.clear_written! if @transaction.owned?
@@ -72,6 +75,7 @@ module FactoryHoist
         raise Error, "hoist scope mismatch" unless scope.group.equal?(group)
 
         @scopes.pop
+        invalidate_snapshot!
         @transaction.rollback_savepoint(scope.savepoint)
         @transaction.clear_written! if @transaction.owned?
         if @scopes.empty?
@@ -110,7 +114,7 @@ module FactoryHoist
         FactoryHoist.stats.increment(:references)
         state = example_instance.instance_variable_get(:@__factory_hoist_values)
         unless state
-          state = ExampleValues.new(example_instance, @scopes, definitions)
+          state = ExampleValues.new(example_instance, shared_snapshot, definitions)
           example_instance.instance_variable_set(:@__factory_hoist_values, state)
         end
         state.fetch(name, fallback)
@@ -121,10 +125,21 @@ module FactoryHoist
       ensure
         @transaction.rollback_outer
         @scopes.clear
+        invalidate_snapshot!
         @examples_since_begin = 0
       end
 
       private
+
+      def shared_snapshot
+        @shared_snapshot ||= DeepCopy.snapshot(
+          @scopes.each_with_object({}) { |scope, values| values.merge!(scope.values) }
+        )
+      end
+
+      def invalidate_snapshot!
+        @shared_snapshot = nil
+      end
 
       def preserve_unmanaged_writes
         return unless @transaction.owned? && @transaction.written?
@@ -140,6 +155,7 @@ module FactoryHoist
 
         @transaction.rollback_outer
         @transaction.begin_outer
+        invalidate_snapshot!
         @scopes.each do |scope|
           @transaction.create_savepoint(scope.savepoint)
           scope.materialize!
@@ -150,6 +166,7 @@ module FactoryHoist
       rescue Exception # rubocop:disable Lint/RescueException
         @transaction.rollback_outer
         @scopes.each { |scope| scope.values.clear }
+        invalidate_snapshot!
         raise
       end
     end
@@ -245,11 +262,10 @@ module FactoryHoist
     end
 
     class ExampleValues
-      def initialize(example, scopes, definitions)
+      def initialize(example, snapshot, definitions)
         @example = example
-        @scopes = scopes.dup
         @definitions = definitions
-        @values = copy_shared_values
+        @values = snapshot.call
         @local = {}
         @materializing = []
       end
@@ -278,23 +294,6 @@ module FactoryHoist
         @definitions.key?(name)
       end
 
-      private
-
-      def copy_shared_values
-        copyable = visible_values.select do |_name, value|
-          DeepCopy.call(value)
-          true
-        rescue StandardError
-          false
-        end
-        DeepCopy.call(copyable)
-      rescue StandardError
-        {}
-      end
-
-      def visible_values
-        @scopes.each_with_object({}) { |scope, values| values.merge!(scope.values) }
-      end
     end
 
     class ExampleMaterializationContext
