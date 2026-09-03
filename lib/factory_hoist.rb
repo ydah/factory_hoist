@@ -4,21 +4,20 @@ require "factory_bot"
 require "minitest"
 require "monitor"
 require "rspec/core"
+require_relative "factory_hoist/error"
+require_relative "factory_hoist/bulk_insertion_error"
 require_relative "factory_hoist/configuration"
+require_relative "factory_hoist/duplicate_hoist_error"
+require_relative "factory_hoist/factory_unavailable_error"
+require_relative "factory_hoist/materialization_error"
 require_relative "factory_hoist/pcg32"
 require_relative "factory_hoist/runtime"
+require_relative "factory_hoist/shared_data_mutation_error"
 require_relative "factory_hoist/statistics"
 require_relative "factory_hoist/version"
 
 module FactoryHoist
   RANDOM_MONITOR = Monitor.new
-
-  class Error < StandardError; end
-  class BulkInsertionError < Error; end
-  class DuplicateHoistError < Error; end
-  class FactoryUnavailableError < Error; end
-  class MaterializationError < Error; end
-  class SharedDataMutationError < Error; end
 
   class << self
     attr_writer :configuration

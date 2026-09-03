@@ -1,6 +1,7 @@
 # frozen_string_literal: true
 
 require_relative "active_record_copying"
+require_relative "value_copying/snapshot"
 
 module FactoryHoist
   module ValueCopying
@@ -45,17 +46,5 @@ module FactoryHoist
       end
     end
 
-    class Snapshot
-      def initialize(payload)
-        @payload = payload
-      end
-
-      def call
-        Marshal.load(@payload)
-      end
-
-      EMPTY = new(nil)
-      def EMPTY.call = {}
-    end
   end
 end
