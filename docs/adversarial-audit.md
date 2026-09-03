@@ -16,7 +16,7 @@ Audited against `.idea/factory_hoist-design.md` on 2026-09-01.
 | Failure locality | Materialization errors include the declaration node and key |
 | FactoryBot build/create/list compatibility | Unit and ActiveRecord integration tests, including FactoryBot-compatible block yields |
 | Fast Build | Bounded per-process paths, generated-file backtraces, reload-safe constants, association/alias semantics, generated-name safety, evaluator-name collisions, and no retry after evaluator errors; benchmark above 8x |
-| Bulk Writer | ActiveRecord `insert_all!`, native type casting, row diagnosis, and PostgreSQL outer-transaction recovery after failure |
+| Bulk Insertion | ActiveRecord `insert_all!`, native type casting, row diagnosis, and PostgreSQL outer-transaction recovery after failure |
 | DatabaseCleaner warning and paranoid row checks | Unit and ActiveRecord tests, including named, anonymous, composite-key, and keyless models |
 | RSpec and Minitest correctness | Primary-entrypoint load-order test; RSpec sharing; Minitest deliberately deoptimizes to per-test creation |
 | Packaging and CLI | Gem build, unpacked executable, and CI/full-suite coverage on the declared minimum Ruby 3.2 |

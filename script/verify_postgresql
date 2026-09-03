@@ -77,7 +77,7 @@ end
 connection.transaction(requires_new: true) do
   begin
     FactoryHoist.unsafe_bulk_insert(:factory_hoist_postgres_bulk_check, 2, name: nil)
-  rescue FactoryHoist::BulkWriteError => error
+  rescue FactoryHoist::BulkInsertionError => error
     raise "bulk failure location missing" unless error.message.include?("row 0")
   else
     raise "invalid bulk insert unexpectedly succeeded"

@@ -1,10 +1,10 @@
 # frozen_string_literal: true
 
 require "openssl"
-require_relative "database_snapshot"
-require_relative "deep_copy"
+require_relative "database_state_digest"
+require_relative "value_copying"
 require_relative "definition"
-require_relative "transaction"
+require_relative "runtime/transaction"
 
 module FactoryHoist
   module Runtime
@@ -95,9 +95,9 @@ module FactoryHoist
         savepoint = "factory_hoist_example_#{example.object_id}"
         @transaction.create_savepoint(savepoint)
         @examples_since_begin += 1
-        before = DatabaseSnapshot.call(@scopes) if FactoryHoist.configuration.paranoid_mode
+        before = DatabaseStateDigest.call(@scopes) if FactoryHoist.configuration.paranoid_mode
         example.run
-        after = DatabaseSnapshot.call(@scopes) if before
+        after = DatabaseStateDigest.call(@scopes) if before
         if before && before != after
           raise SharedDataMutationError, "paranoid_mode detected changes to hoisted database rows"
         end
@@ -114,7 +114,7 @@ module FactoryHoist
         FactoryHoist.stats.increment(:references)
         state = example_instance.instance_variable_get(:@__factory_hoist_values)
         unless state
-          state = ExampleValues.new(example_instance, shared_snapshot, definitions)
+          state = ExampleValueStore.new(example_instance, shared_snapshot, definitions)
           example_instance.instance_variable_set(:@__factory_hoist_values, state)
         end
         state.fetch(name, fallback)
@@ -132,7 +132,7 @@ module FactoryHoist
       private
 
       def shared_snapshot
-        @shared_snapshot ||= DeepCopy.snapshot(
+        @shared_snapshot ||= ValueCopying.snapshot(
           @scopes.each_with_object({}) { |scope, values| values.merge!(scope.values) }
         )
       end
@@ -261,7 +261,7 @@ module FactoryHoist
       end
     end
 
-    class ExampleValues
+    class ExampleValueStore
       def initialize(example, snapshot, definitions)
         @example = example
         @definitions = definitions

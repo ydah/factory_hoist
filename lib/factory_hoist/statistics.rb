@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module FactoryHoist
-  class Stats
+  class Statistics
     COUNTERS = %i[deoptimizations materializations references transaction_rebuilds].freeze
 
     def initialize

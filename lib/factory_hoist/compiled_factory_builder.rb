@@ -5,7 +5,7 @@ require "ripper"
 require "tmpdir"
 
 module FactoryHoist
-  module FastBuild
+  module CompiledFactoryBuilder
     FALLBACK = Object.new.freeze
     @compiled = {}
     @generation = 0
@@ -115,7 +115,7 @@ module FactoryHoist
           RUBY
         end.join("\n")
         <<~RUBY
-          FactoryHoist::FastBuild.install(#{token.dump}) do
+          FactoryHoist::CompiledFactoryBuilder.install(#{token.dump}) do
           #{readers}
             def build
               object = @instance = build_class.new

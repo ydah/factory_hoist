@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
 require "stringio"
-require "factory_hoist/compatibility"
+require "factory_hoist/database_cleaner_compatibility"
 
-RSpec.describe FactoryHoist::Compatibility do
+RSpec.describe FactoryHoist::DatabaseCleanerCompatibility do
   it "warns when DatabaseCleaner uses truncation" do
     stub_const("ExampleTruncation", Class.new)
     cleaner = Object.new

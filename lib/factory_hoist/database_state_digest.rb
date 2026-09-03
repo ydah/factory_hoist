@@ -4,7 +4,7 @@ require "digest"
 require "set"
 
 module FactoryHoist
-  module DatabaseSnapshot
+  module DatabaseStateDigest
     module_function
 
     def call(scopes)

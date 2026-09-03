@@ -2,9 +2,9 @@
 
 require "tempfile"
 require "sqlite3"
-require "factory_hoist/parallel_database"
+require "factory_hoist/database_cloning"
 
-RSpec.describe FactoryHoist::ParallelDatabase do
+RSpec.describe FactoryHoist::DatabaseCloning do
   it "clones SQLite databases without overwriting an existing target" do
     Tempfile.create("factory_hoist_source") do |source|
       database = SQLite3::Database.new(source.path)

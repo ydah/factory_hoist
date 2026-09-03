@@ -3,10 +3,10 @@
 class LocalConstructorRecord
 end
 
-RSpec.describe FactoryHoist::RSpecDSL do
+RSpec.describe FactoryHoist::RSpec::Hoistable do
   it "treats string and symbol declaration names as the same key" do
     group = Class.new do
-      extend FactoryHoist::RSpecDSL
+      extend FactoryHoist::RSpec::Hoistable
 
       def self.metadata
         {full_description: "duplicate declaration test"}

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module FactoryHoist
-  module BulkWriter
+  module BulkInsertion
     module_function
 
     def call(name, count, traits, attributes)
@@ -19,7 +19,7 @@ module FactoryHoist
     rescue StandardError => error
       index = failing_row(factory&.build_class, rows || [])
       location = index ? " at row #{index}" : ""
-      raise BulkWriteError, "#{name} bulk insert failed#{location}: #{error.message}", cause: error
+      raise BulkInsertionError, "#{name} bulk insert failed#{location}: #{error.message}", cause: error
     end
 
     def failing_row(model, rows)

@@ -1,6 +1,6 @@
 # frozen_string_literal: true
 
-require "factory_hoist/fast_build"
+require "factory_hoist/compiled_factory_builder"
 require "faker"
 
 RSpec.describe FactoryHoist do
@@ -264,7 +264,7 @@ FactoryBot.define do
   end
 end
 
-RSpec.describe FactoryHoist::FastBuild do
+RSpec.describe FactoryHoist::CompiledFactoryBuilder do
   before do
     FactoryHoist.configuration.factory_adapter = nil
     described_class.reset!

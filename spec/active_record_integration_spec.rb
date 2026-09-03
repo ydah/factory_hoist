@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 require "active_record"
-require "factory_hoist/bulk_writer"
+require "factory_hoist/bulk_insertion"
 
 ActiveRecord::Base.establish_connection(adapter: "sqlite3", database: ":memory:")
 ActiveRecord::Schema.define do
@@ -48,7 +48,7 @@ FactoryBot.define do
   end
 end
 
-RSpec.describe FactoryHoist::DeepCopy do
+RSpec.describe FactoryHoist::ValueCopying do
   after do
     FactoryHoistDocument.delete_all
     FactoryHoistPreference.delete_all
@@ -85,7 +85,7 @@ RSpec.describe FactoryHoist::DeepCopy do
   it "falls back when an ActiveRecord replay cannot be validated" do
     plan = Object.new
     plan.define_singleton_method(:call) { raise "unsupported replay" }
-    allow(FactoryHoist::RecordCopy).to receive(:plan).and_return(plan)
+    allow(FactoryHoist::ActiveRecordCopying).to receive(:plan).and_return(plan)
 
     snapshot = described_class.snapshot(value: {nested: [1]})
 
@@ -93,7 +93,7 @@ RSpec.describe FactoryHoist::DeepCopy do
   end
 end
 
-RSpec.describe FactoryHoist::RecordCopy do
+RSpec.describe FactoryHoist::ActiveRecordCopying do
   after do
     FactoryHoistMembership.delete_all
     FactoryHoistUser.delete_all
@@ -186,7 +186,7 @@ RSpec.describe FactoryHoist::Runtime::Session do
     outer_definition = FactoryHoist::Definition.new(:value, :outer, [], {}, nil, "outer")
     inner_definition = FactoryHoist::Definition.new(:value, :inner, [], {}, nil, "inner")
     session = described_class.new
-    allow(FactoryHoist::DeepCopy).to receive(:snapshot).and_call_original
+    allow(FactoryHoist::ValueCopying).to receive(:snapshot).and_call_original
 
     session.enter(outer, {value: outer_definition})
     2.times { session.fetch(Object.new, :value, nil, value: outer_definition) }
@@ -197,7 +197,7 @@ RSpec.describe FactoryHoist::Runtime::Session do
 
     expect(nested).to eq(factory: :inner)
     expect(restored).to eq(factory: :outer)
-    expect(FactoryHoist::DeepCopy).to have_received(:snapshot).exactly(3).times
+    expect(FactoryHoist::ValueCopying).to have_received(:snapshot).exactly(3).times
   ensure
     session&.close
     FactoryHoist.configuration.factory_adapter = previous_adapter
@@ -310,7 +310,7 @@ RSpec.describe "FactoryHoist subtransaction budget" do
   end
 end
 
-RSpec.describe "FactoryHoist bulk writer" do
+RSpec.describe "FactoryHoist bulk insertion" do
   before { FactoryHoistUser.delete_all }
   after { FactoryHoistUser.delete_all }
 
@@ -324,7 +324,7 @@ RSpec.describe "FactoryHoist bulk writer" do
   it "identifies the failing row without leaving partial inserts" do
     FactoryHoistUser.transaction do
       expect { FactoryHoist.unsafe_bulk_insert(:factory_hoist_user, 2, name: nil) }
-        .to raise_error(FactoryHoist::BulkWriteError, /row 0/)
+        .to raise_error(FactoryHoist::BulkInsertionError, /row 0/)
       FactoryHoistUser.create!(name: "transaction remains usable")
     end
 
@@ -338,11 +338,11 @@ RSpec.describe "FactoryHoist bulk writer" do
       end
     end
 
-    expect(FactoryHoist::BulkWriter.send(:failing_row, unavailable, [{}])).to be_nil
+    expect(FactoryHoist::BulkInsertion.send(:failing_row, unavailable, [{}])).to be_nil
   end
 end
 
-RSpec.describe FactoryHoist::DatabaseSnapshot do
+RSpec.describe FactoryHoist::DatabaseStateDigest do
   it "changes when a hoisted database row changes" do
     user = FactoryHoistUser.create!(name: "before")
     other = FactoryHoistUser.create!(name: "other")

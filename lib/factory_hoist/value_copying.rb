@@ -1,9 +1,9 @@
 # frozen_string_literal: true
 
-require_relative "record_copy"
+require_relative "active_record_copying"
 
 module FactoryHoist
-  module DeepCopy
+  module ValueCopying
     module_function
 
     def call(object)
@@ -14,7 +14,7 @@ module FactoryHoist
     def snapshot(values)
       return Snapshot::EMPTY if values.empty?
 
-      plan = RecordCopy.plan(values)
+      plan = ActiveRecordCopying.plan(values)
       if plan
         begin
           plan.call

@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module FactoryHoist
-  module ParallelDatabase
+  module DatabaseCloning
     module_function
 
     def clone(source:, target:, adapter:)

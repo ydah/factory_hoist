@@ -7,14 +7,14 @@ require "rspec/core"
 require_relative "factory_hoist/configuration"
 require_relative "factory_hoist/pcg32"
 require_relative "factory_hoist/runtime"
-require_relative "factory_hoist/stats"
+require_relative "factory_hoist/statistics"
 require_relative "factory_hoist/version"
 
 module FactoryHoist
   RANDOM_MONITOR = Monitor.new
 
   class Error < StandardError; end
-  class BulkWriteError < Error; end
+  class BulkInsertionError < Error; end
   class DuplicateHoistError < Error; end
   class FactoryUnavailableError < Error; end
   class MaterializationError < Error; end
@@ -36,7 +36,7 @@ module FactoryHoist
       Thread.current[:factory_hoist_random] = nil
       stats.reset!
       Runtime.reset!
-      FastBuild.reset! if defined?(FastBuild)
+      CompiledFactoryBuilder.reset! if defined?(CompiledFactoryBuilder)
     end
 
     def build(name, *traits, **attributes, &block)
@@ -66,13 +66,13 @@ module FactoryHoist
     end
 
     def unsafe_bulk_insert(name, count, *traits, **attributes)
-      require_relative "factory_hoist/bulk_writer"
-      BulkWriter.call(name, count, traits, attributes)
+      require_relative "factory_hoist/bulk_insertion"
+      BulkInsertion.call(name, count, traits, attributes)
     end
 
     def clone_database(source:, target:, adapter:)
-      require_relative "factory_hoist/parallel_database"
-      ParallelDatabase.clone(source: source, target: target, adapter: adapter)
+      require_relative "factory_hoist/database_cloning"
+      DatabaseCloning.clone(source: source, target: target, adapter: adapter)
     end
 
     def advise(*paths, io: $stdout)
@@ -81,7 +81,7 @@ module FactoryHoist
     end
 
     def stats
-      @stats ||= Stats.new
+      @stats ||= Statistics.new
     end
 
     def random
@@ -98,9 +98,9 @@ module FactoryHoist
       adapter = configuration.factory_adapter
       return adapter.call(:build, name, traits, attributes) if adapter
 
-      require_relative "factory_hoist/fast_build" unless defined?(::FactoryHoist::FastBuild)
-      result = FastBuild.call(name, traits, attributes)
-      return result unless result.equal?(FastBuild::FALLBACK)
+      require_relative "factory_hoist/compiled_factory_builder" unless defined?(::FactoryHoist::CompiledFactoryBuilder)
+      result = CompiledFactoryBuilder.call(name, traits, attributes)
+      return result unless result.equal?(CompiledFactoryBuilder::FALLBACK)
 
       call_factory_bot(:build, name, traits, attributes)
     end

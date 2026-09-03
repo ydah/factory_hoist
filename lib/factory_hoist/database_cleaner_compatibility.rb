@@ -1,7 +1,7 @@
 # frozen_string_literal: true
 
 module FactoryHoist
-  module Compatibility
+  module DatabaseCleanerCompatibility
     module_function
 
     def warn_for_database_cleaner(io = $stderr)

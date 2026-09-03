@@ -4,8 +4,8 @@ module FactoryHoist
   # Replays an ActiveRecord object graph without Marshal.
   # The graph shape is analysed once per group materialization; each example
   # then pays for lightweight state replay and association rewiring.
-  module RecordCopy
-    Unsupported = Class.new(StandardError)
+  module ActiveRecordCopying
+    UnsupportedError = Class.new(StandardError)
     Association = Struct.new(:target, :loaded)
     Node = Struct.new(:klass, :attributes, :new_record, :associations, :extra_ivars, :previous_changes)
 
@@ -36,20 +36,20 @@ module FactoryHoist
     def visit(record, slots, nodes)
       key = record.object_id
       return slots[key] if slots.key?(key)
-      raise Unsupported unless record.is_a?(::ActiveRecord::Base)
-      raise Unsupported unless record.class.name
-      raise Unsupported unless record.singleton_methods(false).empty?
-      raise Unsupported if record.destroyed? || record.frozen?
-      raise Unsupported if record.errors.any?
-      raise Unsupported unless copyable_class?(record.class)
+      raise UnsupportedError unless record.is_a?(::ActiveRecord::Base)
+      raise UnsupportedError unless record.class.name
+      raise UnsupportedError unless record.singleton_methods(false).empty?
+      raise UnsupportedError if record.destroyed? || record.frozen?
+      raise UnsupportedError if record.errors.any?
+      raise UnsupportedError unless copyable_class?(record.class)
 
       slot = nodes.size
       slots[key] = slot
       extras = record.instance_variables - REPLAYED_IVARS - TRANSIENT_IVARS
       extras.reject! { |ivar| ivar.start_with?("@_") }
       extra_ivars = extras.to_h { |ivar| [ivar, record.instance_variable_get(ivar)] }
-      raise Unsupported unless copyable_ivar?(extra_ivars)
-      raise Unsupported if record.attributes.any? do |_name, value|
+      raise UnsupportedError unless copyable_ivar?(extra_ivars)
+      raise UnsupportedError if record.attributes.any? do |_name, value|
         value.is_a?(String) && contains_object?(extra_ivars, value)
       end
       node = Node.new(

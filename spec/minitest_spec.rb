@@ -3,7 +3,7 @@
 require "minitest"
 require "factory_hoist/minitest"
 
-RSpec.describe FactoryHoist::MinitestDSL do
+RSpec.describe FactoryHoist::Minitest::Hoistable do
   let(:test_class) do
     Class.new(Minitest::Test) do
       hoist(:company)
