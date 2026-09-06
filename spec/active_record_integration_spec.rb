@@ -188,12 +188,12 @@ RSpec.describe FactoryHoist::Runtime::Session do
     session = described_class.new
     allow(FactoryHoist::ValueCopying).to receive(:snapshot).and_call_original
 
-    session.enter(outer, {value: outer_definition})
-    2.times { session.fetch(Object.new, :value, nil, value: outer_definition) }
-    session.enter(inner, {value: inner_definition})
-    nested = session.fetch(Object.new, :value, nil, value: inner_definition)
-    session.leave(inner)
-    restored = session.fetch(Object.new, :value, nil, value: outer_definition)
+    session.enter_scope(outer, {value: outer_definition})
+    2.times { session.fetch_value(Object.new, :value, nil, value: outer_definition) }
+    session.enter_scope(inner, {value: inner_definition})
+    nested = session.fetch_value(Object.new, :value, nil, value: inner_definition)
+    session.leave_scope(inner)
+    restored = session.fetch_value(Object.new, :value, nil, value: outer_definition)
 
     expect(nested).to eq(factory: :inner)
     expect(restored).to eq(factory: :outer)
@@ -338,7 +338,7 @@ RSpec.describe "FactoryHoist bulk insertion" do
       end
     end
 
-    expect(FactoryHoist::BulkInsertion.send(:failing_row, unavailable, [{}])).to be_nil
+    expect(FactoryHoist::BulkInsertion.send(:failing_row_index, unavailable, [{}])).to be_nil
   end
 end
 
@@ -364,14 +364,14 @@ RSpec.describe FactoryHoist::DatabaseStateDigest do
     definition = FactoryHoist::Definition.new(
       :user, :factory_hoist_user, [], {}, nil, "paranoid test"
     )
-    session.enter(group, {user: definition})
+    session.enter_scope(group, {user: definition})
     example = Object.new
     example.define_singleton_method(:run) { FactoryHoistUser.first.update!(name: "changed") }
 
     expect { session.around_example(example) }
       .to raise_error(FactoryHoist::SharedDataMutationError)
   ensure
-    session&.leave(group) if group
+    session&.leave_scope(group) if group
     FactoryHoist.configuration.paranoid_mode = false
   end
 
@@ -431,12 +431,12 @@ RSpec.describe "FactoryHoist materialization failure cleanup" do
     }
     session = FactoryHoist::Runtime::Session.new
     group = Object.new
-    session.enter(group, definitions, materialize: false)
+    session.enter_scope(group, definitions, materialize: false)
 
-    expect { session.materialize(group) }.to raise_error(FactoryHoist::MaterializationError)
+    expect { session.materialize_scope(group) }.to raise_error(FactoryHoist::MaterializationError)
     expect(FactoryHoistUser.count).to eq(0)
   ensure
-    session&.leave(group) if group
+    session&.leave_scope(group) if group
   end
 end
 
@@ -451,15 +451,15 @@ RSpec.describe "FactoryHoist late connection cleanup" do
       :user, :factory_hoist_user, [], {}, nil, "late connection"
     )
     group = Object.new
-    session.enter(group, {user: definition}, materialize: false)
-    session.materialize(group)
+    session.enter_scope(group, {user: definition}, materialize: false)
+    session.materialize_scope(group)
 
     expect(FactoryHoistUser.count).to eq(1)
-    session.leave(group)
+    session.leave_scope(group)
     group = nil
     expect(FactoryHoistUser.count).to eq(0)
   ensure
-    session&.leave(group) if group
+    session&.leave_scope(group) if group
     FactoryHoistUser.delete_all
   end
 end
@@ -471,7 +471,7 @@ RSpec.describe "FactoryHoist reset cleanup" do
     definition = FactoryHoist::Definition.new(
       :user, :factory_hoist_user, [], {}, nil, "reset cleanup"
     )
-    FactoryHoist::Runtime.current.enter(Object.new, {user: definition})
+    FactoryHoist::Runtime.current.enter_scope(Object.new, {user: definition})
 
     expect(FactoryHoistUser.count).to eq(1)
     FactoryHoist.reset!

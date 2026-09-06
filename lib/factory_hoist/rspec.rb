@@ -9,7 +9,7 @@ module FactoryHoist
     ::RSpec::Core::ExampleGroup.extend(Hoistable)
     ::RSpec.configure do |config|
       config.before(:suite) do
-        DatabaseCleanerCompatibility.warn_for_database_cleaner
+        DatabaseCleanerCompatibility.warn_if_incompatible
         Scheduler.install!
       end
       config.around(:each) do |example|

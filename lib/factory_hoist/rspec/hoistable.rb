@@ -16,7 +16,7 @@ module FactoryHoist
         definition = Definition.new(name, factory, traits.freeze, attributes.freeze, block, node_path)
         definitions[name] = definition
         define_method(name) do
-          Runtime.current.fetch(self, name, definition, Scheduler.definitions_for(self.class))
+          Runtime.current.fetch_value(self, name, definition, Scheduler.definitions_for(self.class))
         end
       end
     end

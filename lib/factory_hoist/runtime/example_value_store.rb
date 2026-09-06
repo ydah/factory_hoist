@@ -31,7 +31,7 @@ module FactoryHoist
         end
       end
 
-      def defined?(name)
+      def definition?(name)
         @definitions.key?(name)
       end
     end

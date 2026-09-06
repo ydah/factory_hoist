@@ -40,16 +40,16 @@ module FactoryHoist
 
     def build(name, *traits, **attributes, &block)
       result = if defined?(::Faker::Config)
-        with_random_source(random) { build_factory(name, traits, attributes) }
+        with_random_source(random) { build_factory_record(name, traits, attributes) }
       else
-        build_factory(name, traits, attributes)
+        build_factory_record(name, traits, attributes)
       end
 
       result.tap { |record| block&.call(record) }
     end
 
     def create(name, *traits, **attributes, &block)
-      run_factory(:create, name, traits, attributes).tap { |record| block&.call(record) }
+      run_factory_strategy(:create, name, traits, attributes).tap { |record| block&.call(record) }
     end
 
     def build_list(name, count, *traits, **attributes, &block)
@@ -93,7 +93,7 @@ module FactoryHoist
 
     private
 
-    def build_factory(name, traits, attributes)
+    def build_factory_record(name, traits, attributes)
       adapter = configuration.factory_adapter
       return adapter.call(:build, name, traits, attributes) if adapter
 
@@ -110,12 +110,12 @@ module FactoryHoist
           (!faker_config || faker_config.random.equal?(source))
         return yield
       end
-      return scope_random_source(source) { yield } unless faker_config
+      return with_scoped_random_source(source) { yield } unless faker_config
 
-      RANDOM_MONITOR.synchronize { scope_random_source(source) { yield } }
+      RANDOM_MONITOR.synchronize { with_scoped_random_source(source) { yield } }
     end
 
-    def scope_random_source(source)
+    def with_scoped_random_source(source)
       previous = Thread.current[:factory_hoist_random]
       Thread.current[:factory_hoist_random] = source
       faker_config = ::Faker::Config if defined?(::Faker::Config)
@@ -127,7 +127,7 @@ module FactoryHoist
       Thread.current[:factory_hoist_random] = previous
     end
 
-    def run_factory(strategy, name, traits, attributes)
+    def run_factory_strategy(strategy, name, traits, attributes)
       adapter = configuration.factory_adapter
       adapter ||= default_factory_adapter
       adapter.call(strategy, name, traits, attributes)

@@ -76,15 +76,15 @@ factory_hoist = measure.call do
   definition = FactoryHoist::Definition.new(:order, :phase0_order, [], {}, nil, "phase0")
   session = FactoryHoist::Runtime::Session.new
   group = Object.new
-  session.enter(group, {order: definition})
+  session.enter_scope(group, {order: definition})
   examples.times do
     example = Object.new
     example.define_singleton_method(:run) do
-      session.fetch(self, :order, definition, {order: definition})
+      session.fetch_value(self, :order, definition, {order: definition})
     end
     session.around_example(example)
   end
-  session.leave(group)
+  session.leave_scope(group)
 end
 
 reduction = 1 - factory_hoist[1].fdiv(baseline[1])

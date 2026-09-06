@@ -28,13 +28,13 @@ module FactoryHoist
 
       slots = {}
       nodes = []
-      layout = values.transform_values { |value| visit(value, slots, nodes) }
+      layout = values.transform_values { |value| visit_record(value, slots, nodes) }
       Plan.new(nodes, layout)
     rescue StandardError
       nil
     end
 
-    def visit(record, slots, nodes)
+    def visit_record(record, slots, nodes)
       key = record.object_id
       return slots[key] if slots.key?(key)
       raise UnsupportedError unless record.is_a?(::ActiveRecord::Base)
@@ -49,7 +49,7 @@ module FactoryHoist
       extras = record.instance_variables - REPLAYED_IVARS - TRANSIENT_IVARS
       extras.reject! { |ivar| ivar.start_with?("@_") }
       extra_ivars = extras.to_h { |ivar| [ivar, record.instance_variable_get(ivar)] }
-      raise UnsupportedError unless copyable_ivar?(extra_ivars)
+      raise UnsupportedError unless copyable_state?(extra_ivars)
       raise UnsupportedError if record.attributes.any? do |_name, value|
         value.is_a?(String) && contains_object?(extra_ivars, value)
       end
@@ -66,16 +66,16 @@ module FactoryHoist
         next if !association.loaded? && (target.nil? || (target.respond_to?(:empty?) && target.empty?))
 
         target = if target.is_a?(Array)
-          target.map { |element| visit(element, slots, nodes) }
+          target.map { |element| visit_record(element, slots, nodes) }
         elsif target
-          visit(target, slots, nodes)
+          visit_record(target, slots, nodes)
         end
         node.associations[reflection.name] = Association.new(target, association.loaded?)
       end
       slot
     end
 
-    def copyable_ivar?(value, seen = {})
+    def copyable_state?(value, seen = {})
       return true if value.nil? || value.equal?(true) || value.equal?(false) || value.is_a?(Symbol)
       return value.instance_variables.empty? if value.is_a?(Numeric) || value.is_a?(String)
       return true if seen[value.object_id]
@@ -83,8 +83,8 @@ module FactoryHoist
 
       seen[value.object_id] = true
       case value
-      when Array then value.all? { |element| copyable_ivar?(element, seen) }
-      when Hash then value.all? { |key, element| copyable_ivar?(key, seen) && copyable_ivar?(element, seen) }
+      when Array then value.all? { |element| copyable_state?(element, seen) }
+      when Hash then value.all? { |key, element| copyable_state?(key, seen) && copyable_state?(element, seen) }
       else false
       end
     end
@@ -118,5 +118,7 @@ module FactoryHoist
     rescue StandardError
       false
     end
+
+    private_class_method :visit_record, :copyable_state?, :contains_object?, :copyable_class?
   end
 end

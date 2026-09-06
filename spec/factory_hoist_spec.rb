@@ -43,10 +43,10 @@ RSpec.describe FactoryHoist do
   end
 
   it "derives stable, node-specific seeds" do
-    seed = FactoryHoist::Runtime.seed("orders paid", :order)
+    seed = FactoryHoist::Runtime.seed_for("orders paid", :order)
 
-    expect(seed).to eq(FactoryHoist::Runtime.seed("orders paid", :order))
-    expect(seed).not_to eq(FactoryHoist::Runtime.seed("orders refunded", :order))
+    expect(seed).to eq(FactoryHoist::Runtime.seed_for("orders paid", :order))
+    expect(seed).not_to eq(FactoryHoist::Runtime.seed_for("orders refunded", :order))
   end
 
   it "uses a deterministic PCG random stream" do
@@ -275,7 +275,7 @@ RSpec.describe FactoryHoist::CompiledFactoryBuilder do
 
     expect(user).to be_a(FastBuildUser)
     expect(user.email).to eq("grace.lovelace@example.test")
-    expect(File).to exist(described_class.compiled_source(:fast_build_user))
+    expect(File).to exist(described_class.compiled_source_path(:fast_build_user))
   end
 
   it "falls back to FactoryBot when callbacks affect build semantics" do
@@ -323,12 +323,12 @@ RSpec.describe FactoryHoist::CompiledFactoryBuilder do
 
   it "falls back when an attribute conflicts with evaluator methods" do
     expect(FactoryHoist.build(:reserved_fast_build_record).build).to eq("attribute value")
-    expect(described_class.compiled_source(:reserved_fast_build_record)).to be_nil
+    expect(described_class.compiled_source_path(:reserved_fast_build_record)).to be_nil
   end
 
   it "uses safe process-specific generated paths" do
     FactoryHoist.build(:"../unsafe fast build")
-    source = described_class.compiled_source(:"../unsafe fast build")
+    source = described_class.compiled_source_path(:"../unsafe fast build")
 
     expect(File.dirname(source)).to eq(File.join(Dir.tmpdir, "factory_hoist"))
     expect(File.basename(source)).to include("_#{Process.pid}_")
@@ -343,7 +343,7 @@ RSpec.describe FactoryHoist::CompiledFactoryBuilder do
     end
 
     expect(FactoryHoist.build(name).first_name).to eq("long")
-    expect(File.basename(described_class.compiled_source(name)).bytesize).to be < 255
+    expect(File.basename(described_class.compiled_source_path(name)).bytesize).to be < 255
   end
 
   it "falls back when an override aliases an association" do
@@ -361,7 +361,7 @@ RSpec.describe FactoryHoist::CompiledFactoryBuilder do
 
     expect(record.public_send(:if)).to eq("value")
     expect(record.public_send(:Foo)).to eq("uppercase")
-    expect(described_class.compiled_source(:keyword_fast_build_record)).to be_nil
+    expect(described_class.compiled_source_path(:keyword_fast_build_record)).to be_nil
   end
 end
 

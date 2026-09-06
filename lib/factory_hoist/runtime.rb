@@ -21,7 +21,7 @@ module FactoryHoist
       Thread.current[THREAD_KEY] = nil
     end
 
-    def seed(node_path, key, index = 0)
+    def seed_for(node_path, key, index = 0)
       input = [FactoryHoist.configuration.suite_seed, node_path, key, index].join("\0")
       OpenSSL::Digest.digest("BLAKE2b512", input).unpack1("Q>")
     end

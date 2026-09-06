@@ -43,7 +43,7 @@ module FactoryHoist
         if scope
           definition = scope.definitions.fetch(name)
           FactoryHoist.stats.record_reference("#{definition.node_path} #{name}")
-          return scope.materialize_one(name, self)
+          return scope.materialize_definition(name, self)
         end
 
         raise KeyError, "unknown hoist: #{name}"

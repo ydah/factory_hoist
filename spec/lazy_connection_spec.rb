@@ -11,7 +11,7 @@ RSpec.describe "FactoryHoist lazy connection cleanup" do
     allow(ActiveRecord::Base).to receive(:connection).and_raise("connection failed")
     transaction = FactoryHoist::Runtime::Transaction.new
 
-    expect { transaction.begin_outer }.to raise_error("connection failed")
+    expect { transaction.begin_outer_transaction }.to raise_error("connection failed")
   end
 
   it "starts a transaction before an example-local factory opens the connection" do
@@ -36,7 +36,7 @@ RSpec.describe "FactoryHoist lazy connection cleanup" do
         session = FactoryHoist::Runtime::Session.new
         example = Object.new
         example.define_singleton_method(:run) do
-          session.fetch(self, :user, definition, {user: definition})
+          session.fetch_value(self, :user, definition, {user: definition})
         end
 
         session.around_example(example, local: true)

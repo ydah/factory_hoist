@@ -22,7 +22,7 @@ module FactoryHoist
         evaluator = cached ? cached[:evaluator] : compile(key)
         if evaluator && !overrides.empty?
           override_names = overrides.keys.map(&:to_sym)
-          aliases = evaluator.factory_ir[:attributes].any? do |attribute|
+          aliases = evaluator.factory_representation[:attributes].any? do |attribute|
             override_names.any? { |override| attribute.name != override && attribute.alias_for?(override) }
           end
           return FALLBACK if aliases
@@ -39,7 +39,7 @@ module FactoryHoist
           cached = @compiled[name.to_sym]
           return cached[:evaluator] if cached && cached[:factory].equal?(factory)
 
-          ir = build_ir(factory)
+          ir = build_factory_representation(factory)
           return unless ir
 
           install_reload_hook
@@ -58,7 +58,7 @@ module FactoryHoist
         nil
       end
 
-      def install(token, &builder)
+      def install_evaluator(token, &builder)
         ir = @pending.delete(token)
         evaluator = Class.new(Evaluator)
         ir[:attributes].each do |attribute|
@@ -66,7 +66,7 @@ module FactoryHoist
           evaluator.define_method(raw_name, &attribute.to_proc)
         end
         evaluator.class_eval(&builder)
-        evaluator.factory_ir = ir
+        evaluator.factory_representation = ir
         @compiled[ir[:name]] = {
           factory: ir[:factory], evaluator: evaluator, source_path: ir[:source_path]
         }
@@ -81,7 +81,7 @@ module FactoryHoist
 
       def reload!
         @mutex.synchronize do
-          @compiled.each_value { |entry| entry[:evaluator].factory_ir.delete(:klass) }
+          @compiled.each_value { |entry| entry[:evaluator].factory_representation.delete(:klass) }
         end
       end
 
@@ -89,9 +89,11 @@ module FactoryHoist
         File.join(Dir.tmpdir, "factory_hoist", "#{token}.rb")
       end
 
-      def compiled_source(name)
+      def compiled_source_path(name)
         @compiled.dig(name.to_sym, :source_path)
       end
+
+      private :source_path
 
       private
 
@@ -116,7 +118,7 @@ module FactoryHoist
           RUBY
         end.join("\n")
         <<~RUBY
-          FactoryHoist::CompiledFactoryBuilder.install(#{token.dump}) do
+          FactoryHoist::CompiledFactoryBuilder.install_evaluator(#{token.dump}) do
           #{readers}
             def build
               object = @instance = build_class.new
@@ -132,7 +134,7 @@ module FactoryHoist
         RUBY
       end
 
-      def build_ir(factory)
+      def build_factory_representation(factory)
         factory.compile
         definition = factory.definition
         return unless definition.callbacks.empty? && definition.constructor.nil?

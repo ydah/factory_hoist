@@ -14,7 +14,7 @@ module FactoryHoist
 
         definition = Definition.new(name, factory, traits.freeze, attributes.freeze, block, to_s)
         definitions[name] = definition
-        define_method(name) { factory_hoist_local_values.fetch(name) }
+        define_method(name) { factory_hoist_value_store.fetch(name) }
       end
 
       def factory_hoist_definitions

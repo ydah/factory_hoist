@@ -17,14 +17,14 @@ module FactoryHoist
       end
 
       def method_missing(name, *args, **kwargs, &block)
-        return @values.fetch(name) if args.empty? && kwargs.empty? && @values.defined?(name)
+        return @values.fetch(name) if args.empty? && kwargs.empty? && @values.definition?(name)
         return @example.__send__(name, *args, **kwargs, &block) if @example.respond_to?(name, true)
 
         super
       end
 
       def respond_to_missing?(name, include_private = false)
-        @values.defined?(name) || @example.respond_to?(name, true) || super
+        @values.definition?(name) || @example.respond_to?(name, true) || super
       end
     end
   end

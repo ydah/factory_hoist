@@ -4,7 +4,7 @@ module FactoryHoist
   module DatabaseCleanerCompatibility
     module_function
 
-    def warn_for_database_cleaner(io = $stderr)
+    def warn_if_incompatible(io = $stderr)
       return unless defined?(::DatabaseCleaner)
 
       strategy = ::DatabaseCleaner[:active_record].strategy

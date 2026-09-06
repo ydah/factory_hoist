@@ -3,7 +3,7 @@
 module FactoryHoist
   module Runtime
     class Scope
-      attr_accessor :rebuildable
+      attr_writer :rebuildable
       attr_reader :definitions, :group, :values
 
       def initialize(group, definitions, ancestors)
@@ -15,17 +15,21 @@ module FactoryHoist
         @rebuildable = true
       end
 
-      def savepoint
+      def savepoint_name
         @savepoint ||= "factory_hoist_group_#{group.object_id}"
+      end
+
+      def rebuildable?
+        @rebuildable
       end
 
       def materialize!
         @values = {}
         context = MaterializationContext.new(@ancestors, self)
-        @definitions.each_key { |name| materialize_one(name, context) }
+        @definitions.each_key { |name| materialize_definition(name, context) }
       end
 
-      def materialize_one(name, context)
+      def materialize_definition(name, context)
         return @values.fetch(name) if @values.key?(name)
         raise Error, "circular hoist dependency: #{(@materializing + [name]).join(' -> ')}" if @materializing.include?(name)
 

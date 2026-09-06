@@ -5,8 +5,8 @@ module FactoryHoist
     module ExampleValueAccess
       private
 
-      def factory_hoist_local_values
-        @factory_hoist_local_values ||= ExampleValueStore.new(self)
+      def factory_hoist_value_store
+        @factory_hoist_value_store ||= ExampleValueStore.new(self)
       end
     end
   end

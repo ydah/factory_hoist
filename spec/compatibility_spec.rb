@@ -13,7 +13,7 @@ RSpec.describe FactoryHoist::DatabaseCleanerCompatibility do
     stub_const("DatabaseCleaner", database_cleaner)
     output = StringIO.new
 
-    described_class.warn_for_database_cleaner(output)
+    described_class.warn_if_incompatible(output)
 
     expect(output.string).to include("use transaction strategy")
   end

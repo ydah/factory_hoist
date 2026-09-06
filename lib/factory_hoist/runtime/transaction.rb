@@ -11,7 +11,7 @@ module FactoryHoist
         @write_subscriber = nil
       end
 
-      def begin_outer
+      def begin_outer_transaction
         @connection = active_record_connection
         return unless @connection
 
@@ -27,27 +27,27 @@ module FactoryHoist
       def create_savepoint(name)
         return if @savepoints.include?(name)
 
-        begin_outer unless usable?
-        return unless usable?
+        begin_outer_transaction unless connection_usable?
+        return unless connection_usable?
 
         @connection.create_savepoint(name)
         @savepoints << name
       end
 
       def rollback_savepoint(name)
-        return unless usable? && @savepoints.include?(name)
+        return unless connection_usable? && @savepoints.include?(name)
 
         @connection.rollback_to_savepoint(name)
         @connection.release_savepoint(name)
         @savepoints.delete(name)
       end
 
-      def rollback_savepoints
-        rollback_savepoint(@savepoints.last) while usable? && @savepoints.any?
+      def rollback_all_savepoints
+        rollback_savepoint(@savepoints.last) while connection_usable? && @savepoints.any?
       end
 
-      def rollback_outer
-        @connection.rollback_transaction if usable? && @owned
+      def rollback_outer_transaction
+        @connection.rollback_transaction if connection_usable? && @owned
       ensure
         ActiveSupport::Notifications.unsubscribe(@write_subscriber) if @write_subscriber
         @write_subscriber = nil
@@ -56,21 +56,21 @@ module FactoryHoist
         @owned = false
       end
 
-      def owned?
+      def owns_transaction?
         @owned
       end
 
-      def written?
+      def write_detected?
         @written
       end
 
-      def clear_written!
+      def reset_write_tracking!
         @written = false
       end
 
       private
 
-      def usable?
+      def connection_usable?
         @connection && @connection.transaction_open?
       rescue StandardError
         false

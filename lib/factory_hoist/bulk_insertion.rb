@@ -17,12 +17,12 @@ module FactoryHoist
         factory.build_class.insert_all!(rows)
       end
     rescue StandardError => error
-      index = failing_row(factory&.build_class, rows || [])
+      index = failing_row_index(factory&.build_class, rows || [])
       location = index ? " at row #{index}" : ""
       raise BulkInsertionError, "#{name} bulk insert failed#{location}: #{error.message}", cause: error
     end
 
-    def failing_row(model, rows)
+    def failing_row_index(model, rows)
       return unless model&.respond_to?(:transaction)
 
       failed = nil
@@ -39,6 +39,6 @@ module FactoryHoist
     rescue StandardError
       nil
     end
-    private_class_method :failing_row
+    private_class_method :failing_row_index
   end
 end

@@ -13,7 +13,7 @@ module FactoryHoist
             examples = referring_examples(group, definition)
             next if examples.empty?
 
-            target = lca(examples.map(&:example_group))
+            target = lowest_common_ancestor(examples.map(&:example_group))
             schedules[target][definition.name] = definition
           end
         end
@@ -109,7 +109,7 @@ module FactoryHoist
         true
       end
 
-      def lca(groups)
+      def lowest_common_ancestor(groups)
         groups.first.parent_groups.find { |candidate| groups.all? { |group| group.parent_groups.include?(candidate) } }
       end
 
@@ -117,17 +117,17 @@ module FactoryHoist
         group.prepend_before(:context) do
           next unless self.class.equal?(group)
 
-          Runtime.current.enter(group, definitions, materialize: false)
+          Runtime.current.enter_scope(group, definitions, materialize: false)
         end
         group.before(:context) do
           next unless self.class.equal?(group)
 
-          Runtime.current.materialize(group)
+          Runtime.current.materialize_scope(group)
         end
         group.append_after(:context) do
           next unless self.class.equal?(group)
 
-          Runtime.current.leave(group)
+          Runtime.current.leave_scope(group)
         end
       end
     end

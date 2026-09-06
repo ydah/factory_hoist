@@ -35,7 +35,7 @@ end
 before_reads = subtrans_reads.call
 checkpoint = connection.select_value("SELECT next_xid::text FROM pg_control_checkpoint()")
 
-session.enter(group, {record: definition})
+session.enter_scope(group, {record: definition})
 61.times do
   example = Object.new
   example.define_singleton_method(:run) do
@@ -47,7 +47,7 @@ session.enter(group, {record: definition})
   end
   session.around_example(example)
 end
-session.leave(group)
+session.leave_scope(group)
 
 raise "outer transaction was not rebuilt" unless transaction_ids.uniq.size == 2
 raise "unexpected subtrans disk read" unless subtrans_reads.call == before_reads
@@ -56,9 +56,9 @@ raise "pg_control_checkpoint unavailable" unless checkpoint
 
 FactoryHoist.configuration.subxid_budget = 1
 context_group = Object.new
-session.enter(context_group, {record: definition}, materialize: false)
+session.enter_scope(context_group, {record: definition}, materialize: false)
 model.create!(name: "context setup")
-session.materialize(context_group)
+session.materialize_scope(context_group)
 2.times do
   example = Object.new
   example.define_singleton_method(:run) do
@@ -66,7 +66,7 @@ session.materialize(context_group)
   end
   session.around_example(example)
 end
-session.leave(context_group)
+session.leave_scope(context_group)
 raise "context setup leaked" unless model.count.zero?
 
 FactoryBot.define do
@@ -91,7 +91,7 @@ FactoryHoist.configuration.factory_adapter = lambda do |_strategy, _name, _trait
   model.create!({name: "reset"}.merge(attributes))
 end
 reset_definition = FactoryHoist::Definition.new(:record, :record, [], {}, nil, "reset check")
-FactoryHoist::Runtime.current.enter(Object.new, {record: reset_definition})
+FactoryHoist::Runtime.current.enter_scope(Object.new, {record: reset_definition})
 raise "reset setup failed" unless model.count == 1
 
 FactoryHoist.reset!

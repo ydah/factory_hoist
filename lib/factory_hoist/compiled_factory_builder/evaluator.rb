@@ -4,7 +4,7 @@ module FactoryHoist
   module CompiledFactoryBuilder
     class Evaluator
       class << self
-        attr_accessor :factory_ir
+        attr_accessor :factory_representation
       end
 
       def initialize(overrides)
@@ -39,7 +39,7 @@ module FactoryHoist
       private
 
       def build_class
-        ir = self.class.factory_ir
+        ir = self.class.factory_representation
         return ir[:klass] if ir[:klass]
 
         parts = ir[:class_name].split("::").reject(&:empty?)
